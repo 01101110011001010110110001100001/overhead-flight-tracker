@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Overhead flight tracker — private settings (Wi-Fi + OpenSky creds + home coords).
+# NEVER commit this file. Commit settings.toml.example instead.
+settings.toml

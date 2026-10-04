@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 Nela
+# SPDX-License-Identifier: MIT
+#
+# Example configuration for the overhead flight tracker.
+#
+# HOW TO USE:
+#   1. Copy this file to "settings.toml"  (cp settings.toml.example settings.toml)
+#   2. Fill in your real values below.
+#   3. settings.toml is git-ignored, so your secrets are never committed.
+#
+# IMPORTANT CircuitPython note about this file format:
+#   CircuitPython's settings.toml parser only understands STRINGS and INTEGERS.
+#   It does NOT understand floating-point numbers. So every value that is really
+#   a decimal number (latitude, longitude, radius) MUST be written inside quotes
+#   as a string. The code calls float() on them. Whole numbers (like the refresh
+#   interval) can be left unquoted as integers.
+
+# --- Wi-Fi ---------------------------------------------------------------
+# These two names are special: CircuitPython reads them automatically, and the
+# code also uses them to connect. Use your 2.4 GHz network (the ESP32-S3 radio
+# does not do 5 GHz).
+CIRCUITPY_WIFI_SSID = "your-wifi-name"
+CIRCUITPY_WIFI_PASSWORD = "your-wifi-password"
+
+# --- OpenSky Network API credentials -------------------------------------
+# Create a free account at https://opensky-network.org/ then go to your
+# Account page -> "API Client" to create an API client. It gives you a
+# client_id and client_secret for OAuth2 client-credentials login.
+# Leave these empty and the tracker will warn you and stay in display-only mode.
+OPENSKY_CLIENT_ID = "your-opensky-client-id"
+OPENSKY_CLIENT_SECRET = "your-opensky-client-secret"
+
+# --- Home location -------------------------------------------------------
+# Your house, in decimal degrees. QUOTED because they are decimals (see note).
+# North latitude and East longitude are positive; South and West are negative.
+# Example below is roughly Manhattan, NYC.
+HOME_LAT = "40.7128"
+HOME_LON = "-74.0060"
+
+# --- Search radius -------------------------------------------------------
+# How far from home an aircraft may be and still count as "overhead".
+# Written in the units you choose below (miles if imperial, km if metric).
+# Keep this small: it keeps the API query cheap (1 credit) and the display
+# relevant. QUOTED because it is a decimal.
+SEARCH_RADIUS = "8"
+
+# --- Units ---------------------------------------------------------------
+# "imperial" -> miles + feet  (typical for US)
+# "metric"   -> kilometers + meters
+UNITS = "imperial"
+
+# --- Timing --------------------------------------------------------------
+# How often to ask OpenSky for new data, in seconds. 30 s is a good default:
+# ~2,880 requests/day, well under the 4,000 credits/day for a free authenticated
+# account (a small bbox costs 1 credit per request). Do NOT go much below 30 s
+# or you risk exhausting your daily quota. Integer, so no quotes.
+REFRESH_SECONDS = 30
+
+# A position is considered "stale" (ignored) if it is older than this many
+# seconds compared to OpenSky's own report timestamp. Integer, so no quotes.
+STALE_SECONDS = 60
+
+# --- Clock fallback ------------------------------------------------------
+# When no aircraft are nearby, show a digital clock instead of a plain
+# "NO FLIGHTS" message. The time comes from OpenSky's response timestamp
+# (no battery clock needed) and is shown in St. Louis / US Central time with
+# automatic daylight saving. Set CLOCK_FALLBACK to "false" to disable.
+CLOCK_FALLBACK = "true"
+CLOCK_LABEL = "ST LOUIS"
