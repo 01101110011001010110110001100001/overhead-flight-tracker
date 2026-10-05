@@ -1,25 +1,20 @@
 # SPDX-FileCopyrightText: 2026 Nela
 # SPDX-License-Identifier: MIT
 #
-# Overhead flight tracker -- main program for the Adafruit MatrixPortal S3
-# driving one 64x32 HUB75 panel. Shows the closest airborne aircraft near your
-# home using the OpenSky Network API.
+# The main program. It runs the whole show: read settings, connect Wi-Fi, then
+# loop forever asking OpenSky where the planes are and FlightAware what they are,
+# and draw the closest one on the panel.
 #
-# OpenSky detects aircraft near home and provides their positions/distance;
-# FlightAware fills in departure airport, destination airport, and aircraft type
-# for each newly detected flight (cached, budget-limited).
+# The other files each do one job:
+#   flight_display.py  draws on the panel
+#   flight_filter.py   picks the closest plane and formats the text
+#   opensky.py         gets plane positions from OpenSky
+#   flightaware.py     gets the route + aircraft type from FlightAware
+#   budget.py          keeps a running tally of FlightAware spending
+#   clock.py           turns UTC into St. Louis time
 #
-# Structure:
-#   flight_display.py -- the panel (hardware)
-#   flight_filter.py  -- which plane to show + unit formatting (pure logic)
-#   opensky.py        -- OpenSky OAuth2 + positions (network)
-#   flightaware.py    -- FlightAware route/type lookups (network)
-#   budget.py         -- persistent FlightAware spend tracker (NVM)
-#   clock.py          -- UTC -> St. Louis time (pure logic)
-#   code.py (this)    -- glue: settings, Wi-Fi, main loop, error recovery
-#
-# All secrets and your home coordinates live in settings.toml (git-ignored).
-# See settings.toml.example. This file never prints secrets.
+# Your Wi-Fi password, API keys, and home coordinates live in settings.toml,
+# which is git-ignored. This file never prints them.
 
 import os
 import ssl
@@ -42,10 +37,8 @@ from budget import BudgetTracker
 FLIGHTAWARE_CERT_PATH = "/flightaware_ssl_root.pem"
 
 
-# ----------------------------------------------------------------------------
-# Settings helpers. CircuitPython's settings.toml only stores strings & ints,
-# so decimals are stored quoted and converted here.
-# ----------------------------------------------------------------------------
+# Little helpers to read settings.toml. Decimals are stored as quoted strings
+# (CircuitPython can't parse bare decimals), so we convert them here.
 def getenv_str(name, default=None):
     value = os.getenv(name)
     return value if value is not None else default
@@ -136,19 +129,16 @@ def connect_wifi(ui):
             delay = min(delay * 2, BACKOFF_MAX)
 
 
-# ----------------------------------------------------------------------------
-# Time source for the clock. OpenSky stamps each response with a UTC time; we
-# anchor to it and extrapolate with the board's monotonic timer, so no RTC is
-# needed. `time_ref["utc"]` is None until the first successful response.
-# ----------------------------------------------------------------------------
+# The clock. The board has no real clock, so we grab the time from NTP now and
+# then (or fall back to OpenSky's timestamp) and count seconds ourselves in
+# between. time_ref holds that anchor; "utc" is None until we've got a time.
 def current_utc(time_ref):
     if time_ref["utc"] is None:
         return None
-    # IMPORTANT: compute the elapsed seconds as a SMALL number first, convert to
-    # int, THEN add to the integer epoch. CircuitPython floats are single
-    # precision (24-bit mantissa), so adding a few seconds directly to a ~1.79e9
-    # epoch in float loses ~128 s of resolution -- which made the clock freeze in
-    # ~2-minute steps and drift. Integer addition of a small delta avoids that.
+    # Careful here: work out the elapsed seconds (a small number) first, make it
+    # an int, THEN add it to the big epoch. CircuitPython's floats aren't precise
+    # enough to add a few seconds to a ~1.79-billion timestamp -- do it in float
+    # and the seconds vanish, which froze the clock. Integer math keeps it exact.
     elapsed = int(time.monotonic() - time_ref["mono"])
     return time_ref["utc"] + elapsed
 

@@ -1,15 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Nela
 # SPDX-License-Identifier: MIT
 #
-# Portions adapted from Adafruit's "MatrixPortal S3 Flight Proximity Tracker"
-# example (the RGBMatrix pin setup):
+# The panel setup (pin wiring) is adapted from Adafruit's MatrixPortal S3 Flight
+# Proximity Tracker example:
 #   SPDX-FileCopyrightText: 2023 Trevor Beaton for Adafruit Industries
 #   SPDX-License-Identifier: MIT
 #   https://learn.adafruit.com/matrixportal-s3-flight-proximity-tracker
 #
-# Display layer for the overhead flight tracker. Runs ONLY on the board
-# (it imports `board`, `rgbmatrix`, etc.). It knows nothing about networking
-# or aircraft logic -- it just renders strings onto a 64x32 panel.
+# This is just the screen. It draws lines of text on the 64x32 panel and nothing
+# else -- no networking, no plane logic. Only runs on the board.
 
 import board
 import displayio
@@ -49,13 +48,12 @@ DEFAULT_BRIGHTNESS = 0.3
 
 
 def build_display():
-    """Create and return the FramebufferDisplay for one 64x32 panel.
+    """Set up the 64x32 panel and return the display.
 
-    IMPORTANT (address pins): a 64x32 panel uses 1/16 scan, which needs FOUR
-    address lines: A, B, C, D. This is the key change from Adafruit's example,
-    which targets a 64-pixel-tall (1/32 scan) panel and uses FIVE pins (A-E).
-    Including MTX_ADDRE here on a 32-tall panel would show a garbled/half image.
-    If you ever swap in a panel with a different scan rate, revisit this list.
+    Heads up on the address pins: a 64x32 panel needs FOUR of them (A-D). Adafruit's
+    example is for a taller panel and uses five (A-E) -- using five here would draw
+    a garbled, half-height image. If you swap in a different panel and it looks
+    wrong, this is the first place to check.
     """
     displayio.release_displays()  # free the matrix if code restarted
 

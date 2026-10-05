@@ -1,24 +1,20 @@
 # SPDX-FileCopyrightText: 2026 Nela
 # SPDX-License-Identifier: MIT
 #
-# FlightAware AeroAPI client: fills in departure airport, destination airport,
-# and aircraft type for a flight OpenSky has detected nearby.
+# Asks FlightAware for a plane's route (from/to airports) and aircraft type.
 #
-# Uses GET /flights/{ident}?max_pages=1 (ident = the OpenSky callsign). That can
-# return several flights with the same flight number (past, current, scheduled),
-# so we pick the one that is CURRENTLY AIRBORNE: it has an actual departure time
-# (actual_off) but no actual arrival time (actual_on).
+# We look up GET /flights/{ident} using the callsign. FlightAware can return
+# several flights with the same number (old, current, upcoming), so we pick the
+# one that's actually in the air right now (it has departed but not arrived).
 #
-# Cost control:
-#   * Results are cached per aircraft (by icao24). Position updates and screen
-#     changes reuse the cache and never trigger another FlightAware request.
-#   * Each successful (HTTP 200) query is recorded in the budget tracker.
-#   * We don't query at all once the budget is exhausted; OpenSky tracking
-#     continues regardless.
-#   * A 401 disables FlightAware for the session (bad key); a 429 starts a
-#     cooldown. "Not found" results are cached so we don't keep retrying.
+# Since FlightAware costs money, we're careful:
+#   - Look up each plane once and remember it -- redraws and position updates are
+#     free.
+#   - Stop entirely once the monthly budget is used up (OpenSky keeps going).
+#   - A bad key (401) turns FlightAware off for the session; a rate-limit (429)
+#     waits a bit. "Didn't find it" is remembered so we don't keep asking.
 #
-# This module has no board dependencies (only `time`); its parsing is unit-tested.
+# No board imports (just `time`); the parsing is unit-tested.
 
 import time
 

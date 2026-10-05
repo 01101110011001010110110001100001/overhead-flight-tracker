@@ -1,18 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Nela
 # SPDX-License-Identifier: MIT
 #
-# DISPLAY-ONLY TEST -- no Wi-Fi, no OpenSky account, no settings.toml needed.
+# A screen check with no internet needed -- no Wi-Fi, no accounts, no settings.
 #
-# Purpose: prove your 64x32 panel is wired and configured correctly, and that
-# the rendering/formatting pipeline looks right, BEFORE involving the network.
-#
-# HOW TO RUN ON THE BOARD:
-#   Copy this file onto the CIRCUITPY drive AS "code.py" (overwriting the real
-#   one), or in the REPL run:  import display_test
-# It cycles through sample aircraft and every status screen, forever.
-#
-# It uses the SAME modules as the real app (flight_display + flight_filter), so
-# a good-looking test means those pieces work.
+# Run it to make sure the panel is wired right and the text looks good before you
+# bother with Wi-Fi and API keys. Copy this onto the CIRCUITPY drive as "code.py"
+# (or type `import display_test` in the REPL). It loops through some fake planes,
+# the clock, and the status screens using the same code the real app uses.
 
 import time
 

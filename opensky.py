@@ -1,21 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Nela
 # SPDX-License-Identifier: MIT
 #
-# Minimal OpenSky Network REST client for CircuitPython.
+# Talks to OpenSky to get plane positions. It handles the login (OAuth2),
+# refreshes the access token when it's about to expire (or if the API says it's
+# expired), asks for planes in a box, and flags when we're being rate-limited so
+# the main loop can slow down.
 #
-# Responsibilities:
-#   * OAuth2 "client credentials" login (get an access token from client_id +
-#     client_secret).
-#   * Automatic token renewal: refresh shortly before expiry, and also refresh
-#     once if the API answers 401 (expired/invalid token).
-#   * Query /states/all for a bounding box and return (report_time, states).
-#   * Signal rate limiting (HTTP 429) so the caller can back off and respect
-#     any Retry-After instruction.
-#
-# API reference: https://openskynetwork.github.io/opensky-api/rest.html
-#
-# This module needs a `requests`-style session (adafruit_requests on the board)
-# and `time.monotonic()`. It does NOT import any hardware modules.
+# Docs: https://openskynetwork.github.io/opensky-api/rest.html
+# No hardware imports -- just needs a requests session and time.monotonic().
 
 import time
 

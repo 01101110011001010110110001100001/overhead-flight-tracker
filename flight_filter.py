@@ -1,15 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Nela
 # SPDX-License-Identifier: MIT
 #
-# Pure aircraft-selection logic for the overhead flight tracker.
+# The "which plane, and how do we show it" logic: distances, filtering, and
+# formatting the lines of text. It's plain math with no hardware or network, so
+# it runs on a normal computer and is covered by tests/test_flight_filter.py.
 #
-# This module has NO hardware or network dependencies (only `math`), so it runs
-# unchanged on a desktop Python and is exercised by tests/test_flight_filter.py.
-# Everything that decides "which plane do we show, and how" lives here.
-#
-# It works on OpenSky "state vectors". A state vector is a plain list; the
-# meaning of each slot is fixed by OpenSky's API and captured by the index
-# constants below. See:
+# OpenSky hands us each plane as a plain list ("state vector"); the constants
+# below name the slots we care about. Full list:
 # https://openskynetwork.github.io/opensky-api/rest.html#response
 
 import math

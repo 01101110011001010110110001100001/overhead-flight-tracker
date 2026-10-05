@@ -1,25 +1,21 @@
 # SPDX-FileCopyrightText: 2026 Nela
 # SPDX-License-Identifier: MIT
 #
-# Estimated FlightAware spend tracker, persisted across restarts.
+# Keeps a rough tally of FlightAware spending so we don't blow the budget.
 #
-# It stores two things in the board's non-volatile memory (microcontroller.nvm):
-#   * the current billing month id, and
-#   * how many billable FlightAware queries we've made this month.
-# Estimated cost = query_count * cost_per_query. When the month rolls over, the
-# count resets. We stop allowing queries a little before the budget, leaving a
-# margin.
+# It remembers two numbers in the board's little scratch memory (NVM): which
+# billing month we're in, and how many queries we've made this month. Estimated
+# cost is just queries * price-per-query. The count resets each month, and we
+# stop allowing queries a bit before the budget so there's a safety margin.
 #
-# IMPORTANT (and documented in the README): this is a LOCAL estimate for THIS
-# device only. It cannot see FlightAware requests made by other programs, other
-# machines, or other API keys on the same account, and it assumes each query
-# bills as exactly one result set. Treat it as a safety brake, NOT a guaranteed
-# account-wide spending cap. The real, authoritative usage is in your FlightAware
-# AeroAPI dashboard.
+# Worth repeating (also in the README): this is only an estimate for THIS board.
+# It can't see FlightAware usage from other apps or keys on your account, and it
+# assumes the price you set. It's a safety brake, not a hard cap -- your
+# AeroAPI dashboard is the real source of truth.
 #
-# NVM is used (not a file) because CircuitPython's filesystem is read-only to
-# code unless a boot.py remounts it, whereas nvm is always writable by code and
-# doesn't conflict with the USB drive.
+# We use NVM instead of a file because the board's filesystem is read-only to the
+# code by default, while NVM is always writable and doesn't fight with the USB
+# drive.
 
 import struct
 

@@ -1,15 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Nela
 # SPDX-License-Identifier: MIT
 #
-# Pure date/time helpers: convert a UTC Unix timestamp into St. Louis (US
-# Central) wall-clock time, including daylight saving time.
+# Turns a UTC timestamp into St. Louis (US Central) time, daylight saving and
+# all. Just math -- no hardware, no timezone files -- so it runs and is tested on
+# a normal computer.
 #
-# Why this exists: the board has no reliable real-time clock, but OpenSky stamps
-# every API response with a UTC time. We feed that timestamp in here. No
-# hardware, no timezone database, no network -> runs and is tested on a desktop.
-#
-# To adapt for a different US time zone, change STANDARD_OFFSET_HOURS (and the
-# abbreviations). US DST rules are the same across the mainland zones.
+# Want a different US time zone? Change STANDARD_OFFSET_HOURS (and the CST/CDT
+# labels). The daylight-saving dates are the same across the mainland US.
 
 STANDARD_OFFSET_HOURS = -6   # Central Standard Time (CST) is UTC-6
 DAYLIGHT_OFFSET_HOURS = -5   # Central Daylight Time (CDT) is UTC-5
