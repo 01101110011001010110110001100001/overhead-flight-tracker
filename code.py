@@ -64,6 +64,11 @@ STALE_SECONDS = getenv_int("STALE_SECONDS", 60)
 CLOCK_FALLBACK = getenv_str("CLOCK_FALLBACK", "true").lower() == "true"
 CLOCK_LABEL = getenv_str("CLOCK_LABEL", "ST LOUIS")
 
+# Personal boot splash (shown briefly on startup).
+SPLASH_TOP = getenv_str("SPLASH_TOP", "NELA'S")
+SPLASH_BOTTOM = getenv_str("SPLASH_BOTTOM", "SKYWATCH")
+SPLASH_SECONDS = 2
+
 # Convert the user's radius (miles or km) into km for the math.
 if UNITS == "metric":
     RADIUS_KM = SEARCH_RADIUS
@@ -112,7 +117,7 @@ def current_utc(time_ref):
 
 def render_clock(ui, utc):
     shown = clock.format_central_clock(utc)
-    ui.show_clock(shown["time"], CLOCK_LABEL, shown["abbr"])
+    ui.show_clock(shown["time"], CLOCK_LABEL, clock.format_central_date(utc))
 
 
 def sleep_with_clock(ui, seconds, clock_active, time_ref):
@@ -148,7 +153,8 @@ def refresh_once(client, ui, time_ref):
     if flight is not None:
         shown = ff.format_flight(flight, units=UNITS)
         print("Closest:", shown["callsign"], shown["altitude"], shown["distance"])
-        ui.show_flight(shown["callsign"], shown["altitude"], shown["distance"])
+        ui.show_flight(shown["callsign"], shown["altitude"], shown["distance"],
+                       color=shown["color"])
         return False
 
     if result["stale_only"]:
@@ -172,6 +178,10 @@ def refresh_once(client, ui, time_ref):
 def main():
     display = build_display()
     ui = FlightDisplay(display)
+
+    # Personal boot splash.
+    ui.show_splash(SPLASH_TOP, SPLASH_BOTTOM)
+    time.sleep(SPLASH_SECONDS)
 
     # Credentials missing? Stay in a safe, obvious state instead of crashing.
     if not WIFI_SSID or not CLIENT_ID or not CLIENT_SECRET:

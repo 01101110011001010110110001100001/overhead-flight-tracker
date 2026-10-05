@@ -18,6 +18,11 @@ DST_ABBR = "CDT"
 
 SECONDS_PER_DAY = 86400
 
+# Short names for the date line (index 0 = Sunday, matching _weekday()).
+_WEEKDAYS = ("SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT")
+_MONTHS = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+           "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+
 
 def _civil_from_days(z):
     """Days-since-1970-01-01 -> (year, month, day). Hinnant's algorithm."""
@@ -98,3 +103,16 @@ def format_central_clock(utc):
         "time": "{}:{:02d} {}".format(hour12, parts["minute"], ampm),
         "abbr": parts["abbr"],
     }
+
+
+def _local_days(utc):
+    """Days-since-epoch for the St. Louis local date at this UTC instant."""
+    offset = DAYLIGHT_OFFSET_HOURS if _is_us_dst(utc) else STANDARD_OFFSET_HOURS
+    return (int(utc) + offset * 3600) // SECONDS_PER_DAY
+
+
+def format_central_date(utc):
+    """UTC Unix seconds -> short local date string, e.g. 'SAT OCT 4'."""
+    days = _local_days(utc)
+    year, month, day = _civil_from_days(days)
+    return "{} {} {}".format(_WEEKDAYS[_weekday(days)], _MONTHS[month - 1], day)

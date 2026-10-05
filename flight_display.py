@@ -113,15 +113,23 @@ class FlightDisplay:
             line.text = text
             line.x = self._center_x(text) if center else 1
 
-    def show_flight(self, callsign, altitude, distance):
-        """Show the closest aircraft: callsign, altitude, distance."""
-        self._set(callsign, altitude, distance, COLOR_FLIGHT)
+    def show_flight(self, callsign, altitude, distance, color=None):
+        """Show the closest aircraft: callsign, altitude, distance.
+
+        `color` (0xRRGGBB) is the proximity color; defaults to green if omitted.
+        """
+        self._set(callsign, altitude, distance,
+                  COLOR_FLIGHT if color is None else color)
 
     def show_status(self, line1, line2="", line3="", is_error=False):
         """Show a status/message screen (no aircraft)."""
         color = COLOR_ERROR if is_error else COLOR_INFO
         self._set(line1, line2, line3, color)
 
-    def show_clock(self, time_text, label="", abbr=""):
-        """Clock fallback: centered time with a place label and tz abbrev."""
-        self._set(label, time_text, abbr, COLOR_CLOCK, center=True)
+    def show_clock(self, time_text, label="", date_text=""):
+        """Clock fallback: centered place label, time, and date."""
+        self._set(label, time_text, date_text, COLOR_CLOCK, center=True)
+
+    def show_splash(self, line1, line2=""):
+        """Centered boot splash (e.g. a personal name)."""
+        self._set(line1, line2, "", COLOR_FLIGHT, center=True)

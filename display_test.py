@@ -26,7 +26,8 @@ HOME_LON = -74.0060
 NOW = 10_000  # a fake "current time" for staleness math
 
 
-def make_state(callsign, lat, lon, baro, on_ground=False, time_position=NOW):
+def make_state(callsign, lat, lon, baro, on_ground=False, time_position=NOW,
+               vertical_rate=0.0):
     """Build an OpenSky-style state vector (see flight_filter index constants)."""
     state = [None] * 17
     state[ff.CALLSIGN] = callsign
@@ -35,17 +36,22 @@ def make_state(callsign, lat, lon, baro, on_ground=False, time_position=NOW):
     state[ff.LATITUDE] = lat
     state[ff.BARO_ALTITUDE] = baro
     state[ff.ON_GROUND] = on_ground
+    state[ff.VERTICAL_RATE] = vertical_rate
     return state
 
 
-# A handful of sample aircraft near "home".
+# A handful of sample aircraft near "home". Vertical rates exercise the
+# climb (^) / descend (v) arrows; distances exercise the proximity color.
 SAMPLE_STATES = [
-    make_state("UAL245", 40.720, -74.003, 3048.0),   # ~10,000 ft, closest
-    make_state("DAL1180", 40.735, -74.010, 6096.0),  # ~20,000 ft
-    make_state("N512WT", 40.700, -74.050, 1524.0),   # small plane, ~5,000 ft
-    make_state("", 40.730, -74.000, 2438.0),          # missing callsign
-    make_state("FDX88", 40.690, -73.990, None),       # missing altitude
+    make_state("UAL245", 40.720, -74.003, 3048.0, vertical_rate=5.0),   # climbing, close
+    make_state("DAL1180", 40.735, -74.010, 6096.0, vertical_rate=-4.0), # descending
+    make_state("N512WT", 40.700, -74.050, 1524.0, vertical_rate=0.0),   # level
+    make_state("", 40.730, -74.000, 2438.0),                            # missing callsign
+    make_state("FDX88", 40.690, -73.990, None),                         # missing altitude
 ]
+
+# Fixed sample UTC time so the clock demo needs no network/clock.
+SAMPLE_UTC = 1_751_651_640  # 2025-07-04, afternoon Central
 
 
 def main():
@@ -53,31 +59,39 @@ def main():
     display = build_display()
     ui = FlightDisplay(display)
 
+    # Boot splash (same as the real app).
+    ui.show_splash("NELA'S", "SKYWATCH")
+    time.sleep(3)
+
     while True:
         # 1) Show the closest aircraft picked from the sample set, both units.
+        #    Color warms as the plane gets closer; ^/v shows climb/descent.
         for units in ("imperial", "metric"):
             result = ff.select_closest(
                 SAMPLE_STATES, HOME_LAT, HOME_LON,
                 radius_km=15, now=NOW, max_age_s=60)
             flight = ff.format_flight(result["flight"], units=units)
-            print("Closest ({}): {} {} {}".format(
-                units, flight["callsign"], flight["altitude"], flight["distance"]))
-            ui.show_flight(flight["callsign"], flight["altitude"], flight["distance"])
+            print("Closest ({}): {} {} {} color={:#08x}".format(
+                units, flight["callsign"], flight["altitude"],
+                flight["distance"], flight["color"]))
+            ui.show_flight(flight["callsign"], flight["altitude"],
+                           flight["distance"], color=flight["color"])
             time.sleep(4)
 
         # 2) Show a flight with a missing callsign / missing altitude explicitly.
         odd = ff.format_flight(
-            {"state": make_state("", 40.715, -74.005, None), "distance_km": 2.0},
+            {"state": make_state("", 40.715, -74.005, None), "distance_km": 2.0,
+             "radius_km": 15.0},
             units="imperial")
-        ui.show_flight(odd["callsign"], odd["altitude"], odd["distance"])
+        ui.show_flight(odd["callsign"], odd["altitude"], odd["distance"],
+                       color=odd["color"])
         time.sleep(4)
 
         # 3) Clock fallback (shown instead of "NO FLIGHTS" in the real app).
-        #    Uses a fixed sample UTC time so no network/clock is needed here.
-        sample_utc = 1_751_651_640  # 2025-07-04, afternoon Central
-        shown = clock.format_central_clock(sample_utc)
-        print("Clock:", shown["time"], shown["abbr"])
-        ui.show_clock(shown["time"], "ST LOUIS", shown["abbr"])
+        shown = clock.format_central_clock(SAMPLE_UTC)
+        date_text = clock.format_central_date(SAMPLE_UTC)
+        print("Clock:", shown["time"], date_text)
+        ui.show_clock(shown["time"], "ST LOUIS", date_text)
         time.sleep(4)
 
         # 4) Cycle through every status screen the real app can show.

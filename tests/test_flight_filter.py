@@ -21,7 +21,8 @@ import flight_filter as ff
 
 
 def make_state(callsign="TEST123", lat=40.7128, lon=-74.0060,
-               baro=3000.0, geo=3100.0, on_ground=False, time_position=1000):
+               baro=3000.0, geo=3100.0, on_ground=False, time_position=1000,
+               vertical_rate=0.0):
     """Build an OpenSky-style state vector with sensible defaults."""
     state = [None] * 17
     state[ff.CALLSIGN] = callsign
@@ -31,6 +32,7 @@ def make_state(callsign="TEST123", lat=40.7128, lon=-74.0060,
     state[ff.BARO_ALTITUDE] = baro
     state[ff.ON_GROUND] = on_ground
     state[ff.GEO_ALTITUDE] = geo
+    state[ff.VERTICAL_RATE] = vertical_rate
     return state
 
 
@@ -132,6 +134,62 @@ class FormatFlightTests(unittest.TestCase):
         s = make_state(baro=None, geo=None)
         out = ff.format_flight({"state": s, "distance_km": 1.0})
         self.assertEqual(out["altitude"], "ALT --")
+
+
+class ProximityColorTests(unittest.TestCase):
+    def test_far_is_green(self):
+        self.assertEqual(ff.proximity_color(10.0, 10.0), ff.PROX_FAR)
+
+    def test_overhead_is_red(self):
+        self.assertEqual(ff.proximity_color(0.0, 10.0), ff.PROX_NEAR)
+
+    def test_halfway_is_amber(self):
+        self.assertEqual(ff.proximity_color(5.0, 10.0), ff.PROX_MID)
+
+    def test_monotonic_warming(self):
+        # Red channel should not decrease as the plane gets closer.
+        colors = [ff.proximity_color(d, 10.0) for d in (10, 7.5, 5, 2.5, 0)]
+        reds = [(c >> 16) & 0xFF for c in colors]
+        self.assertEqual(reds, sorted(reds))
+
+    def test_zero_radius_safe(self):
+        self.assertEqual(ff.proximity_color(1.0, 0.0), ff.PROX_NEAR)
+
+
+class ClimbArrowTests(unittest.TestCase):
+    def test_climbing(self):
+        s = make_state(baro=3048.0, vertical_rate=5.0)
+        out = ff.format_flight({"state": s, "distance_km": 1.0, "radius_km": 10.0})
+        self.assertTrue(out["altitude"].endswith(" ^"))
+
+    def test_descending(self):
+        s = make_state(baro=3048.0, vertical_rate=-5.0)
+        out = ff.format_flight({"state": s, "distance_km": 1.0, "radius_km": 10.0})
+        self.assertTrue(out["altitude"].endswith(" v"))
+
+    def test_level_has_no_arrow(self):
+        s = make_state(baro=3048.0, vertical_rate=0.0)
+        out = ff.format_flight({"state": s, "distance_km": 1.0, "radius_km": 10.0})
+        self.assertEqual(out["altitude"], "10000 ft")
+
+    def test_unknown_rate_has_no_arrow(self):
+        s = make_state(baro=3048.0, vertical_rate=None)
+        out = ff.format_flight({"state": s, "distance_km": 1.0, "radius_km": 10.0})
+        self.assertEqual(out["altitude"], "10000 ft")
+
+    def test_format_includes_color(self):
+        s = make_state(baro=3048.0)
+        out = ff.format_flight({"state": s, "distance_km": 10.0, "radius_km": 10.0})
+        self.assertEqual(out["color"], ff.PROX_FAR)
+
+
+class SelectColorIntegrationTests(unittest.TestCase):
+    def test_selection_carries_radius_for_color(self):
+        s = make_state(lat=40.7128, lon=-74.0060)  # distance ~0 -> red
+        result = ff.select_closest([s], HOME_LAT, HOME_LON, radius_km=10,
+                                   now=1000, max_age_s=60)
+        out = ff.format_flight(result["flight"])
+        self.assertEqual(out["color"], ff.PROX_NEAR)
 
 
 class BboxTests(unittest.TestCase):

@@ -21,6 +21,7 @@ LONGITUDE = 5       # float degrees WGS-84, may be None
 LATITUDE = 6        # float degrees WGS-84, may be None
 BARO_ALTITUDE = 7   # float meters, may be None
 ON_GROUND = 8       # bool
+VERTICAL_RATE = 11  # float m/s: + climbing, - descending, may be None
 GEO_ALTITUDE = 13   # float meters, may be None (fallback for altitude)
 
 # --- Unit conversion factors ---------------------------------------------
@@ -28,6 +29,16 @@ FEET_PER_METER = 3.28084
 MILES_PER_KM = 0.621371
 KM_PER_MILE = 1.609344
 EARTH_RADIUS_KM = 6371.0
+
+# --- Proximity color gradient (0xRRGGBB) ---------------------------------
+# A plane glows green when it's far out, warms through amber, and turns red as
+# it comes nearly overhead -- so you can read "how close" at a glance.
+PROX_FAR = 0x00CC33   # green  (at/near the radius edge)
+PROX_MID = 0xFFAA00   # amber  (about halfway in)
+PROX_NEAR = 0xFF2222  # red    (right on top of you)
+
+# Vertical-rate threshold (m/s) below which we call the aircraft "level".
+LEVEL_RATE = 0.5
 
 
 def _get(state, index):
@@ -119,16 +130,52 @@ def select_closest(states, home_lat, home_lon, radius_km,
 
     flight = None
     if best is not None:
-        flight = {"state": best, "distance_km": best_dist}
+        flight = {"state": best, "distance_km": best_dist, "radius_km": radius_km}
 
     return {"flight": flight, "stale_only": (flight is None and saw_stale)}
 
 
-def format_flight(flight, units="imperial"):
-    """Turn a selected flight into short display strings.
+def _blend(color_a, color_b, t):
+    """Linearly blend two 0xRRGGBB colors. t=0 -> a, t=1 -> b."""
+    t = min(1.0, max(0.0, t))
+    ar, ag, ab = (color_a >> 16) & 0xFF, (color_a >> 8) & 0xFF, color_a & 0xFF
+    br, bg, bb = (color_b >> 16) & 0xFF, (color_b >> 8) & 0xFF, color_b & 0xFF
+    r = int(round(ar + (br - ar) * t))
+    g = int(round(ag + (bg - ag) * t))
+    b = int(round(ab + (bb - ab) * t))
+    return (r << 16) | (g << 8) | b
 
-    Handles missing callsigns and missing altitude gracefully. Returns a dict
-    with three ready-to-render strings: callsign, altitude, distance.
+
+def proximity_color(distance_km, radius_km):
+    """Color for a flight based on how close it is: green (far) -> red (near)."""
+    if radius_km <= 0:
+        return PROX_NEAR
+    ratio = min(1.0, max(0.0, distance_km / radius_km))  # 1=far edge, 0=overhead
+    if ratio >= 0.5:
+        # Outer half: green -> amber as it crosses from the edge to halfway.
+        return _blend(PROX_FAR, PROX_MID, (1.0 - ratio) / 0.5)
+    # Inner half: amber -> red as it closes in.
+    return _blend(PROX_MID, PROX_NEAR, (0.5 - ratio) / 0.5)
+
+
+def _climb_arrow(state):
+    """'^' climbing, 'v' descending, '' level/unknown. ASCII for font safety."""
+    rate = _get(state, VERTICAL_RATE)
+    if rate is None:
+        return ""
+    if rate > LEVEL_RATE:
+        return " ^"
+    if rate < -LEVEL_RATE:
+        return " v"
+    return ""
+
+
+def format_flight(flight, units="imperial"):
+    """Turn a selected flight into short display strings + a color.
+
+    Handles missing callsigns and missing altitude gracefully. Returns a dict:
+      callsign, altitude (with a climb/descent arrow), distance, and color
+      (0xRRGGBB chosen by proximity).
     """
     state = flight["state"]
 
@@ -143,18 +190,28 @@ def format_flight(flight, units="imperial"):
         altitude_m = _get(state, GEO_ALTITUDE)
 
     distance_km = flight["distance_km"]
+    # radius_km is present on dicts from select_closest; fall back to the
+    # distance (ratio 1.0 -> far/green) if a caller built the dict by hand.
+    radius_km = flight.get("radius_km", distance_km)
+    arrow = _climb_arrow(state)
 
     if units == "metric":
         if altitude_m is None:
             altitude = "ALT --"
         else:
-            altitude = "{} m".format(int(round(altitude_m)))
+            altitude = "{} m{}".format(int(round(altitude_m)), arrow)
         distance = "{:.1f} km".format(distance_km)
     else:  # imperial
         if altitude_m is None:
             altitude = "ALT --"
         else:
-            altitude = "{} ft".format(int(round(altitude_m * FEET_PER_METER)))
+            altitude = "{} ft{}".format(
+                int(round(altitude_m * FEET_PER_METER)), arrow)
         distance = "{:.1f} mi".format(distance_km * MILES_PER_KM)
 
-    return {"callsign": callsign, "altitude": altitude, "distance": distance}
+    return {
+        "callsign": callsign,
+        "altitude": altitude,
+        "distance": distance,
+        "color": proximity_color(distance_km, radius_km),
+    }

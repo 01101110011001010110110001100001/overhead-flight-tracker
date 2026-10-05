@@ -39,8 +39,11 @@ CDT           <- time-zone abbreviation
 - ✅ Distinct screens for **no-flights / stale / Wi-Fi / API / rate-limit**
 - ✅ **Wi-Fi & API recovery** with exponential backoff — no restart or request
   storms
-- ✅ **St. Louis clock fallback** when no aircraft are nearby
-- ✅ **24 desktop unit tests** pass (filtering, distance, units, clock + DST)
+- ✅ **St. Louis clock fallback** (with day + date) when no aircraft are nearby
+- ✅ **Proximity color**: flights glow green→amber→red as they get closer
+- ✅ **Climb/descent arrows** (`^`/`v`) next to altitude
+- ✅ Personal **boot splash** (configurable, e.g. `NELA'S SKYWATCH`)
+- ✅ **38 desktop unit tests** pass (filtering, distance, units, color, clock + DST)
 - ⬜ Flash + run on real hardware (your step — see Setup)
 
 ---
@@ -178,7 +181,9 @@ The board auto-runs `code.py`. Open the serial console to watch the log.
    valid position**, **outside the radius** (exact great-circle distance), or
    with a **stale** position (older than `STALE_SECONDS`, judged against
    OpenSky's own response timestamp so the board needs no accurate clock).
-5. The **closest** survivor is formatted (meters → feet, km → miles) and shown.
+5. The **closest** survivor is formatted (meters → feet, km → miles) and shown,
+   colored by proximity (green far → amber → red overhead) with a `^`/`v` arrow
+   for climb/descent.
 6. If nothing qualifies and `CLOCK_FALLBACK` is on, the panel shows a **St.
    Louis clock** (see below); otherwise `NO FLIGHTS`. If nearby planes were only
    dropped for staleness, you get `STALE DATA`; network/API problems show
@@ -194,8 +199,18 @@ Central)** time instead of a blank "no flights" message. The time comes from the
 UTC timestamp OpenSky stamps on each API response — so **no battery-backed
 real-time clock is needed** — and it's extrapolated with the board's monotonic
 timer so it keeps ticking between refreshes. `clock.py` applies US daylight
-saving automatically (CST ↔ CDT). Turn it off with `CLOCK_FALLBACK = "false"`,
-or relabel it with `CLOCK_LABEL`.
+saving automatically (CST ↔ CDT) and shows the weekday + date. Turn it off with
+`CLOCK_FALLBACK = "false"`, or relabel it with `CLOCK_LABEL`.
+
+### Personal touches
+
+- **Proximity color** — a shown flight is tinted by how close it is: green near
+  the radius edge, warming through amber, to red when it's nearly overhead.
+- **Climb/descent** — a trailing `^` (climbing) or `v` (descending) next to the
+  altitude, from the aircraft's vertical rate. (ASCII, so it renders on any
+  built-in font.)
+- **Boot splash** — a quick centered splash on startup, set via `SPLASH_TOP` /
+  `SPLASH_BOTTOM` (defaults to `NELA'S` / `SKYWATCH`).
 
 ### API usage / rate limits
 
@@ -256,10 +271,11 @@ Hardware has **not** been tested yet — verify on your board.
 - [x] Distinct messages for no-flights vs. stale vs. connection failures
 - [x] Wi-Fi/API recovery with exponential backoff (no restart/request storms)
 - [x] Reviewed the starter's loop/empty-handling/cleanup/display bugs
-- [x] St. Louis (US Central) clock fallback with automatic daylight saving
+- [x] St. Louis (US Central) clock fallback with daylight saving + date
+- [x] Personal zest: proximity color, climb/descent arrows, boot splash
 - [x] Secrets in git-ignored `settings.toml`; documented `settings.toml.example`
 - [x] MIT license confirmed for original contributions
-- [x] Desktop unit tests pass — 24/24 (`python -m unittest discover -s tests`)
+- [x] Desktop unit tests pass — 38/38 (`python -m unittest discover -s tests`)
 - [ ] **Flash CircuitPython 9.x + libraries onto the board** (you)
 - [ ] **Run the display test on real hardware** (you)
 - [ ] **Run the full tracker with real credentials** (you)

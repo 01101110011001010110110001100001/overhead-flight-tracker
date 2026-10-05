@@ -62,6 +62,25 @@ class CentralTimeTests(unittest.TestCase):
         self.assertEqual(clock._nth_sunday(2026, 3, 2), 8)
         self.assertEqual(clock._nth_sunday(2026, 11, 1), 1)
 
+    def test_date_format(self):
+        # 2026-07-04 12:00 UTC -> morning Central, Saturday.
+        out = clock.format_central_date(utc_of(2026, 7, 4, 12, 0))
+        self.assertEqual(out, "SAT JUL 4")
+
+    def test_date_rolls_back_across_utc_midnight(self):
+        # 2026-07-04 02:00 UTC is still 2026-07-03 (21:00) in Central.
+        out = clock.format_central_date(utc_of(2026, 7, 4, 2, 0))
+        self.assertEqual(out, "FRI JUL 3")
+
+    @unittest.skipIf(_TZ is None, "zoneinfo not available")
+    def test_date_matches_zoneinfo(self):
+        for day in range(0, 365, 11):
+            u = utc_of(2026, 1, 1, 18, 0) + day * 86400
+            ref = datetime.fromtimestamp(u, _TZ)
+            expected = ref.strftime("%a %b %-d").upper()
+            self.assertEqual(clock.format_central_date(u), expected,
+                             "date mismatch at day {}".format(day))
+
     @unittest.skipIf(_TZ is None, "zoneinfo not available")
     def test_matches_zoneinfo_across_year(self):
         # Sample every ~5 days through 2026 and compare to the IANA database.

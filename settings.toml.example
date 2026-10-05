@@ -67,3 +67,9 @@ STALE_SECONDS = 60
 # automatic daylight saving. Set CLOCK_FALLBACK to "false" to disable.
 CLOCK_FALLBACK = "true"
 CLOCK_LABEL = "ST LOUIS"
+
+# --- Boot splash ---------------------------------------------------------
+# Two short lines shown on startup. Make it yours. Keep each line <= ~10
+# characters so it fits the 64-pixel-wide panel.
+SPLASH_TOP = "NELA'S"
+SPLASH_BOTTOM = "SKYWATCH"
