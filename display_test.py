@@ -57,7 +57,7 @@ SAMPLE_UTC = 1_751_651_640  # 2025-07-04, afternoon Central
 def main():
     print("Display test starting -- no network required.")
     display = build_display()
-    ui = FlightDisplay(display)
+    ui = FlightDisplay(display, brightness=0.3)  # dimmed; see BRIGHTNESS setting
 
     # Boot splash (same as the real app).
     ui.show_splash("NELA'S", "SKYWATCH")

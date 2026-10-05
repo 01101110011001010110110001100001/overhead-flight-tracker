@@ -192,6 +192,20 @@ class SelectColorIntegrationTests(unittest.TestCase):
         self.assertEqual(out["color"], ff.PROX_NEAR)
 
 
+class ScaleColorTests(unittest.TestCase):
+    def test_full_is_unchanged(self):
+        self.assertEqual(ff.scale_color(0x00CC33, 1.0), 0x00CC33)
+
+    def test_zero_is_black(self):
+        self.assertEqual(ff.scale_color(0xFFFFFF, 0.0), 0x000000)
+
+    def test_half_dims_each_channel(self):
+        self.assertEqual(ff.scale_color(0xFF8040, 0.5), 0x804020)
+
+    def test_clamps_above_one(self):
+        self.assertEqual(ff.scale_color(0x102030, 5.0), 0x102030)
+
+
 class BboxTests(unittest.TestCase):
     def test_box_contains_home_and_is_small(self):
         box = ff.bbox_around(HOME_LAT, HOME_LON, radius_km=8)

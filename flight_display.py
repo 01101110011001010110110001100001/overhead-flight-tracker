@@ -18,6 +18,8 @@ import rgbmatrix
 import terminalio
 from adafruit_display_text.label import Label
 
+from flight_filter import scale_color
+
 # --- Panel geometry ------------------------------------------------------
 # One 64x32 HUB75 panel.
 DISPLAY_WIDTH = 64
@@ -35,6 +37,11 @@ COLOR_CLOCK = 0x1188FF    # blue   -> clock fallback (no flights nearby)
 
 # terminalio.FONT glyphs are 6 pixels wide; used to center lines.
 GLYPH_WIDTH = 6
+
+# Default panel brightness (0.0 = off .. 1.0 = full/neon). HUB75 panels are
+# very bright at full, so we dim by default. Override per-FlightDisplay or via
+# the BRIGHTNESS setting in settings.toml.
+DEFAULT_BRIGHTNESS = 0.3
 
 
 def build_display():
@@ -86,8 +93,9 @@ class FlightDisplay:
     (which churns memory on a microcontroller).
     """
 
-    def __init__(self, display):
+    def __init__(self, display, brightness=DEFAULT_BRIGHTNESS):
         self.display = display
+        self.brightness = brightness
         self.group = displayio.Group()
 
         # terminalio.FONT is a built-in 6x8 font. At y = baseline, these three
@@ -106,10 +114,11 @@ class FlightDisplay:
         return max(1, (DISPLAY_WIDTH - len(text) * GLYPH_WIDTH) // 2)
 
     def _set(self, text1, text2, text3, color, center=False):
+        dimmed = scale_color(color, self.brightness)
         for line, text in (
             (self.line1, text1), (self.line2, text2), (self.line3, text3)
         ):
-            line.color = color
+            line.color = dimmed
             line.text = text
             line.x = self._center_x(text) if center else 1
 

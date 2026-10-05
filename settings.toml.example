@@ -49,6 +49,12 @@ SEARCH_RADIUS = "8"
 # "metric"   -> kilometers + meters
 UNITS = "imperial"
 
+# --- Brightness ----------------------------------------------------------
+# How bright the panel is, from "0.0" (off) to "1.0" (full/neon). HUB75 panels
+# are glaringly bright at full, so the default is dim. Lower it (e.g. "0.15")
+# for a bedside-friendly glow, or raise it for a sunny room. QUOTED (decimal).
+BRIGHTNESS = "0.3"
+
 # --- Timing --------------------------------------------------------------
 # How often to ask OpenSky for new data, in seconds. 30 s is a good default:
 # ~2,880 requests/day, well under the 4,000 credits/day for a free authenticated

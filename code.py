@@ -56,6 +56,7 @@ HOME_LAT = getenv_float("HOME_LAT", 0.0)
 HOME_LON = getenv_float("HOME_LON", 0.0)
 UNITS = getenv_str("UNITS", "imperial")
 SEARCH_RADIUS = getenv_float("SEARCH_RADIUS", 8.0)  # in UNITS
+BRIGHTNESS = getenv_float("BRIGHTNESS", 0.3)        # 0.0 (off) .. 1.0 (full)
 REFRESH_SECONDS = getenv_int("REFRESH_SECONDS", 30)
 STALE_SECONDS = getenv_int("STALE_SECONDS", 60)
 
@@ -177,7 +178,7 @@ def refresh_once(client, ui, time_ref):
 
 def main():
     display = build_display()
-    ui = FlightDisplay(display)
+    ui = FlightDisplay(display, brightness=BRIGHTNESS)
 
     # Personal boot splash.
     ui.show_splash(SPLASH_TOP, SPLASH_BOTTOM)

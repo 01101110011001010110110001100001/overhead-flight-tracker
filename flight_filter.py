@@ -135,6 +135,15 @@ def select_closest(states, home_lat, home_lon, radius_km,
     return {"flight": flight, "stale_only": (flight is None and saw_stale)}
 
 
+def scale_color(color, scale):
+    """Dim a 0xRRGGBB color by `scale` (0.0=off .. 1.0=full). Reduces glare."""
+    scale = min(1.0, max(0.0, scale))
+    r = int(round(((color >> 16) & 0xFF) * scale))
+    g = int(round(((color >> 8) & 0xFF) * scale))
+    b = int(round((color & 0xFF) * scale))
+    return (r << 16) | (g << 8) | b
+
+
 def _blend(color_a, color_b, t):
     """Linearly blend two 0xRRGGBB colors. t=0 -> a, t=1 -> b."""
     t = min(1.0, max(0.0, t))
