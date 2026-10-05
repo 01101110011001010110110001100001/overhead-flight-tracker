@@ -90,59 +90,52 @@ def build_display():
 
 
 class FlightDisplay:
-    """Three lines of text on the panel.
+    """Three horizontally-centered lines of the built-in 6x8 font.
 
-    We create the three Label objects ONCE and then only change their `.text`
-    and `.color`. This avoids rebuilding a displayio Group on every update
-    (which churns memory on a microcontroller).
+    Labels are created once and only their text/color change (no per-update Group
+    rebuild). Used for flights (callsign/route / altitude/type / distance), the
+    clock, status messages, and the boot splash.
     """
 
     def __init__(self, display, brightness=DEFAULT_BRIGHTNESS):
         self.display = display
         self.brightness = brightness
         self.group = displayio.Group()
-
-        # terminalio.FONT is a built-in 6x8 font. At y = baseline, these three
-        # rows sit comfortably within the 32-pixel height.
-        self.line1 = Label(terminalio.FONT, text="", color=COLOR_INFO, x=1, y=5)
-        self.line2 = Label(terminalio.FONT, text="", color=COLOR_INFO, x=1, y=16)
-        self.line3 = Label(terminalio.FONT, text="", color=COLOR_INFO, x=1, y=27)
-
-        self.group.append(self.line1)
-        self.group.append(self.line2)
-        self.group.append(self.line3)
+        # Three rows, centered horizontally, spaced within the 32-pixel height.
+        self.line1 = self._centered_label(DISPLAY_WIDTH // 2, 6)
+        self.line2 = self._centered_label(DISPLAY_WIDTH // 2, 16)
+        self.line3 = self._centered_label(DISPLAY_WIDTH // 2, 26)
+        for line in (self.line1, self.line2, self.line3):
+            self.group.append(line)
         self.display.root_group = self.group
 
-    def _center_x(self, text):
-        """Left x so `text` sits centered on the 64-wide panel."""
-        return max(1, (DISPLAY_WIDTH - len(text) * GLYPH_WIDTH) // 2)
+    def _centered_label(self, cx, cy):
+        label = Label(terminalio.FONT, text="", color=COLOR_NORMAL)
+        label.anchor_point = (0.5, 0.5)       # center the text on (cx, cy)
+        label.anchored_position = (cx, cy)
+        return label
 
-    def _set(self, text1, text2, text3, color, center=False):
+    def _set(self, text1, text2, text3, color):
         dimmed = scale_color(color, self.brightness)
         for line, text in (
             (self.line1, text1), (self.line2, text2), (self.line3, text3)
         ):
             line.color = dimmed
             line.text = text
-            line.x = self._center_x(text) if center else 1
 
     def show_flight(self, callsign, altitude, distance, color=None):
-        """Show the closest aircraft: callsign, altitude, distance.
-
-        `color` (0xRRGGBB) is the proximity color; defaults to green if omitted.
-        """
+        """Flight view: three centered lines (route/callsign, type/alt, distance)."""
         self._set(callsign, altitude, distance,
                   COLOR_FLIGHT if color is None else color)
 
     def show_status(self, line1, line2="", line3="", is_error=False):
-        """Show a status/message screen (no aircraft)."""
-        color = COLOR_ERROR if is_error else COLOR_INFO
-        self._set(line1, line2, line3, color)
+        """Centered status/message screen (no aircraft)."""
+        self._set(line1, line2, line3, COLOR_ERROR if is_error else COLOR_INFO)
 
     def show_clock(self, time_text, label="", date_text=""):
-        """Clock fallback: centered place label, time, and date."""
-        self._set(label, time_text, date_text, COLOR_CLOCK, center=True)
+        """Centered place label, time, and date."""
+        self._set(label, time_text, date_text, COLOR_CLOCK)
 
     def show_splash(self, line1, line2=""):
         """Centered boot splash (e.g. a personal name)."""
-        self._set(line1, line2, "", COLOR_FLIGHT, center=True)
+        self._set(line1, line2, "", COLOR_FLIGHT)

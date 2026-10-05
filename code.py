@@ -180,14 +180,18 @@ def render_clock(ui, utc):
     ui.show_clock(shown["time"], CLOCK_LABEL, clock.format_central_date(utc))
 
 
-def sleep_with_clock(ui, seconds, clock_active, time_ref):
-    """Wait `seconds`, re-rendering the clock each second if it's showing."""
+def sleep_and_render(ui, seconds, view, time_ref):
+    """Wait `seconds`, animating the current view.
+
+    `view` is {"kind": "clock"} (re-render the live clock each second) or
+    {"kind": "static"} (a flight or message that doesn't change while we wait).
+    """
     end = time.monotonic() + seconds
     while True:
         remaining = end - time.monotonic()
         if remaining <= 0:
             return
-        if clock_active:
+        if view["kind"] == "clock":
             utc = current_utc(time_ref)
             if utc is not None:
                 render_clock(ui, utc)
@@ -195,8 +199,8 @@ def sleep_with_clock(ui, seconds, clock_active, time_ref):
 
 
 # ----------------------------------------------------------------------------
-# One refresh: fetch -> filter -> render. Returns True if the clock fallback is
-# now showing (so the caller keeps it ticking). Raises on network/API failure.
+# One refresh: fetch -> filter -> render. Returns a "view" descriptor that tells
+# the wait loop what to animate. Raises on network/API failure.
 # ----------------------------------------------------------------------------
 def refresh_once(client, fa_client, budget, ui, time_ref):
     report_time, states = client.get_states(BBOX)
@@ -228,13 +232,13 @@ def refresh_once(client, fa_client, budget, ui, time_ref):
         print("Closest:", shown["line1"], "|", shown["line2"], "|", shown["line3"])
         ui.show_flight(shown["line1"], shown["line2"], shown["line3"],
                        color=shown["color"])
-        return False
+        return {"kind": "static"}
 
     if result["stale_only"]:
         # We DID reach the API and saw nearby planes, but their fixes were old.
         print("Nearby aircraft seen, but positions are stale.")
         ui.show_status("STALE DATA", "waiting for", "fresh fix")
-        return False
+        return {"kind": "static"}
 
     # No eligible aircraft: show the clock if enabled and we know the time.
     utc = current_utc(time_ref)
@@ -244,11 +248,11 @@ def refresh_once(client, fa_client, budget, ui, time_ref):
         print("No flights; clock {} {} (time src: {})".format(
             shown["time"], shown["abbr"], src))
         render_clock(ui, utc)
-        return True
+        return {"kind": "clock"}
 
     print("No eligible aircraft within radius.")
     ui.show_status("NO FLIGHTS", "nearby")
-    return False
+    return {"kind": "static"}
 
 
 def main():
@@ -306,7 +310,7 @@ def main():
     backoff = BACKOFF_START
     while True:
         wait = REFRESH_SECONDS
-        clock_active = False
+        view = {"kind": "static"}
         try:
             # If Wi-Fi dropped, reconnect before trying the API.
             if not wifi.radio.connected:
@@ -314,12 +318,7 @@ def main():
                 connect_wifi(ui)
 
             sync_time_from_ntp(time_ref, ntp)  # keep the clock accurate
-            _utc = current_utc(time_ref)
-            if _utc is not None:
-                _c = clock.format_central_clock(_utc)
-                print("time {} {} (src: {})".format(
-                    _c["time"], _c["abbr"], "NTP" if time_ref.get("ntp_ok") else "OpenSky"))
-            clock_active = refresh_once(client, fa_client, budget, ui, time_ref)
+            view = refresh_once(client, fa_client, budget, ui, time_ref)
             backoff = BACKOFF_START  # success resets the backoff
 
         except RateLimited as limited:
@@ -343,8 +342,9 @@ def main():
             wait = backoff
             backoff = min(backoff * 2, BACKOFF_MAX)
 
-        # Wait until the next refresh. If the clock is showing, keep it live.
-        sleep_with_clock(ui, wait, clock_active, time_ref)
+        # Wait until the next refresh, animating the current view (clock ticks,
+        # big flight view rotates between airports and type/distance).
+        sleep_and_render(ui, wait, view, time_ref)
 
 
 main()

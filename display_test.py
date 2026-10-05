@@ -81,13 +81,13 @@ def main():
     ]
 
     while True:
-        # 1) Show flights: departure>destination / type-or-altitude / distance.
-        #    Red only when nearly overhead (<= 3 mi).
+        # 1) Flights: three centered lines -- route(or callsign) / type(or alt) /
+        #    distance. Red only when nearly overhead (<= 3 mi).
         for flight, route in demos:
             shown = ff.format_flight_lines(flight, route,
                                            units="imperial", close_km=4.8)
-            print("Flight: {} | {} | {} color={:#08x}".format(
-                shown["line1"], shown["line2"], shown["line3"], shown["color"]))
+            print("Flight: {} | {} | {}".format(
+                shown["line1"], shown["line2"], shown["line3"]))
             ui.show_flight(shown["line1"], shown["line2"], shown["line3"],
                            color=shown["color"])
             time.sleep(4)
