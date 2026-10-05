@@ -10,7 +10,8 @@ It combines two data sources:
 - **FlightAware AeroAPI** — fills in the **departure airport → destination
   airport** and **aircraft type** for each newly detected flight.
 
-The closest eligible airborne aircraft is shown as three lines:
+The closest eligible airborne aircraft is shown as three horizontally-centered
+lines:
 
 ```
 DFW>STL      <- departure airport > destination airport (from FlightAware)
@@ -203,6 +204,16 @@ route + type until the next billing month.
 counter stored in the board's **non-volatile memory (NVM)**, so the estimate
 **persists across restarts, retries, and testing**. The counter resets when the
 billing month rolls over (detected from the NTP clock).
+
+**Seeing your spend:** once an hour (and at startup) the board logs a line to the
+serial console like:
+
+```
+FlightAware budget: est. $0.06 of $14.50 spent this month (5 queries)
+```
+
+(It's a log line, not a push notification — the board can't message your phone on
+its own.)
 
 ### ⚠️ Limits of this local spending protection
 
