@@ -199,6 +199,11 @@ class FormatFlightLinesTests(unittest.TestCase):
         self.assertEqual(out["line2"], "A319")
         self.assertEqual(out["line3"], "8.0 mi")
 
+    def test_type_code_becomes_model_name(self):
+        route = {"origin": "DFW", "dest": "STL", "type": "BCS1"}
+        out = ff.format_flight_lines(self._flight(), route)
+        self.assertEqual(out["line2"], "A220-100")   # not the raw "BCS1"
+
     def test_no_route_falls_back_to_callsign_and_altitude(self):
         out = ff.format_flight_lines(self._flight("UAL9"), None, units="imperial")
         self.assertEqual(out["line1"], "UAL9")        # callsign
@@ -245,6 +250,28 @@ class FormatFlightLinesTests(unittest.TestCase):
         route = {"origin": "DFW", "dest": "STL", "type": "A319"}
         out = ff.format_flight_lines(self._flight(dist_km=2.0), route, close_km=4.8)
         self.assertEqual(out["color"], ff.COLOR_CLOSE)
+
+
+class AircraftNameTests(unittest.TestCase):
+    def test_known_codes(self):
+        self.assertEqual(ff.aircraft_name("BCS1"), "A220-100")
+        self.assertEqual(ff.aircraft_name("B738"), "737-800")
+        self.assertEqual(ff.aircraft_name("A21N"), "A321neo")
+
+    def test_case_insensitive(self):
+        self.assertEqual(ff.aircraft_name("bcs1"), "A220-100")
+
+    def test_unknown_falls_back_to_code(self):
+        self.assertEqual(ff.aircraft_name("ZZZZ"), "ZZZZ")
+
+    def test_none(self):
+        self.assertIsNone(ff.aircraft_name(None))
+        self.assertIsNone(ff.aircraft_name(""))
+
+    def test_all_names_fit_panel(self):
+        for code, name in ff.AIRCRAFT_NAMES.items():
+            self.assertLessEqual(len(name), ff.MAX_LINE,
+                                 "{} -> {!r} too long".format(code, name))
 
 
 class ScaleColorTests(unittest.TestCase):

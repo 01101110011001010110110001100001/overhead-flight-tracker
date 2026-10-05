@@ -209,6 +209,46 @@ def _truncate(text, limit=MAX_LINE):
     return text if len(text) <= limit else text[:limit]
 
 
+# FlightAware gives aircraft types as short ICAO codes (e.g. "BCS1"). Most people
+# would rather see the model name ("A220-100"), so we translate the common ones.
+# Anything not listed just shows its code, which is still meaningful. Names are
+# kept short (<= ~10 chars) to fit the panel.
+AIRCRAFT_NAMES = {
+    # Airbus
+    "A318": "A318", "A319": "A319", "A320": "A320", "A321": "A321",
+    "A19N": "A319neo", "A20N": "A320neo", "A21N": "A321neo",
+    "A332": "A330-200", "A333": "A330-300", "A339": "A330-900",
+    "A342": "A340-200", "A343": "A340-300", "A345": "A340-500", "A346": "A340-600",
+    "A359": "A350-900", "A35K": "A350-1K", "A388": "A380",
+    "BCS1": "A220-100", "BCS3": "A220-300",
+    # Boeing
+    "B712": "717-200", "B733": "737-300", "B734": "737-400", "B735": "737-500",
+    "B736": "737-600", "B737": "737-700", "B738": "737-800", "B739": "737-900",
+    "B38M": "737 MAX8", "B39M": "737 MAX9", "B3XM": "737 MX10",
+    "B752": "757-200", "B753": "757-300",
+    "B762": "767-200", "B763": "767-300", "B764": "767-400",
+    "B772": "777-200", "B77L": "777-200L", "B773": "777-300", "B77W": "777-300ER",
+    "B788": "787-8", "B789": "787-9", "B78X": "787-10",
+    "B744": "747-400", "B748": "747-8",
+    # Embraer
+    "E170": "E170", "E75S": "E175", "E75L": "E175", "E175": "E175",
+    "E190": "E190", "E195": "E195", "E290": "E190-E2", "E295": "E195-E2",
+    # Regional / turboprop
+    "CRJ2": "CRJ-200", "CRJ7": "CRJ-700", "CRJ9": "CRJ-900", "CRJX": "CRJ-1000",
+    "DH8D": "Q400", "AT72": "ATR 72", "AT76": "ATR72-6", "AT45": "ATR 42",
+    # Common general aviation
+    "C172": "C172", "C182": "C182", "C208": "C208", "PC12": "PC-12",
+    "SR22": "SR22", "BE20": "King Air",
+}
+
+
+def aircraft_name(code):
+    """Friendly model name for an ICAO type code, or the code itself if unknown."""
+    if not code:
+        return None
+    return AIRCRAFT_NAMES.get(code.upper(), code)
+
+
 def format_flight_lines(flight, route, units="imperial", close_km=DEFAULT_CLOSE_KM):
     """Build the 3 display lines from an OpenSky flight + FlightAware `route`.
 
@@ -232,9 +272,10 @@ def format_flight_lines(flight, route, units="imperial", close_km=DEFAULT_CLOSE_
     else:
         line1 = _truncate(callsign)
 
-    # Line 2 -- aircraft type if known, else altitude.
-    if route.get("type"):
-        line2 = _truncate(route["type"])
+    # Line 2 -- aircraft model name if known, else altitude.
+    type_name = aircraft_name(route.get("type"))
+    if type_name:
+        line2 = _truncate(type_name)
     else:
         line2 = _altitude_text(state, units) or "ALT --"
 

@@ -20,6 +20,10 @@ A319         aircraft type               (FlightAware)
 
 A few nice touches:
 
+- The aircraft type is shown as a friendly model name where we know it
+  (`BCS1` becomes `A220-100`, `B738` becomes `737-800`, and so on). Anything not
+  in the list just shows its short code. The list lives in `flight_filter.py`
+  (`AIRCRAFT_NAMES`) if you want to add more.
 - If FlightAware doesn't know a flight (or you've hit your budget), it just
   shows the callsign and altitude instead. OpenSky tracking never stops.
 - Text is white, and turns red only when a plane is nearly overhead.
