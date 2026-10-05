@@ -32,21 +32,21 @@ def utc_of(y, mo, d, h, mi):
 class CentralTimeTests(unittest.TestCase):
     def test_winter_is_cst(self):
         out = clock.format_central_clock(utc_of(2026, 1, 15, 18, 34))
-        self.assertEqual(out["time"], "12:34 PM")
+        self.assertEqual(out["time"], "12:34")
         self.assertEqual(out["abbr"], "CST")
 
     def test_summer_is_cdt(self):
         out = clock.format_central_clock(utc_of(2026, 7, 4, 18, 34))
-        self.assertEqual(out["time"], "1:34 PM")
+        self.assertEqual(out["time"], "13:34")
         self.assertEqual(out["abbr"], "CDT")
 
     def test_midnight_is_twelve_am(self):
         out = clock.format_central_clock(utc_of(2026, 7, 5, 5, 0))  # 00:00 CDT
-        self.assertEqual(out["time"], "12:00 AM")
+        self.assertEqual(out["time"], "00:00")
 
     def test_noon_is_twelve_pm(self):
         out = clock.format_central_clock(utc_of(2026, 12, 25, 18, 0))  # 12:00 CST
-        self.assertEqual(out["time"], "12:00 PM")
+        self.assertEqual(out["time"], "12:00")
 
     def test_dst_starts_second_sunday_march(self):
         # 2026: 2nd Sunday of March is the 8th.
@@ -65,7 +65,7 @@ class CentralTimeTests(unittest.TestCase):
         # Build a UTC timestamp from NTP-style components, then format it back.
         u = clock.utc_from_components(2026, 7, 4, 18, 34, 7)
         self.assertEqual(u, utc_of(2026, 7, 4, 18, 34) + 7)
-        self.assertEqual(clock.format_central_clock(u)["time"], "1:34 PM")  # CDT
+        self.assertEqual(clock.format_central_clock(u)["time"], "13:34")  # CDT
 
     def test_nth_sunday_helper(self):
         self.assertEqual(clock._nth_sunday(2026, 3, 2), 8)
@@ -97,7 +97,7 @@ class CentralTimeTests(unittest.TestCase):
             u = utc_of(2026, 1, 1, 12, 0) + day * 86400
             mine = clock.format_central_clock(u)
             ref = datetime.fromtimestamp(u, _TZ)
-            self.assertEqual(mine["time"], ref.strftime("%-I:%M %p"),
+            self.assertEqual(mine["time"], ref.strftime("%H:%M"),
                              "time mismatch at day {}".format(day))
             self.assertEqual(mine["abbr"], ref.strftime("%Z"),
                              "tz mismatch at day {}".format(day))

@@ -89,18 +89,13 @@ def central_time(utc):
 
 
 def format_central_clock(utc):
-    """UTC Unix seconds -> dict with a 12-hour 'time' string and tz 'abbr'.
+    """UTC Unix seconds -> dict with a 24-hour 'time' string and tz 'abbr'.
 
-    Example: {"time": "7:34 PM", "abbr": "CDT"}
+    Example: {"time": "19:34", "abbr": "CDT"}
     """
     parts = central_time(utc)
-    hour24 = parts["hour"]
-    ampm = "AM" if hour24 < 12 else "PM"
-    hour12 = hour24 % 12
-    if hour12 == 0:
-        hour12 = 12
     return {
-        "time": "{}:{:02d} {}".format(hour12, parts["minute"], ampm),
+        "time": "{:02d}:{:02d}".format(parts["hour"], parts["minute"]),
         "abbr": parts["abbr"],
     }
 
