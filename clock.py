@@ -106,6 +106,16 @@ def utc_from_components(year, month, day, hour, minute, second):
             + hour * 3600 + minute * 60 + second)
 
 
+def utc_month_id(utc):
+    """A unique integer id for the UTC calendar month (year*12 + month).
+
+    Used to detect when the billing month rolls over so the budget counter
+    resets. This is a UTC-calendar approximation of FlightAware's billing month.
+    """
+    year, month, _ = _civil_from_days(int(utc) // SECONDS_PER_DAY)
+    return year * 12 + month
+
+
 def _local_days(utc):
     """Days-since-epoch for the St. Louis local date at this UTC instant."""
     offset = DAYLIGHT_OFFSET_HOURS if _is_us_dst(utc) else STANDARD_OFFSET_HOURS

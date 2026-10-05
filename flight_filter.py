@@ -175,25 +175,6 @@ def _altitude_text(state, units):
     return "{} ft{}".format(int(round(altitude_m * FEET_PER_METER)), arrow)
 
 
-def route_is_plausible(plane_lat, plane_lon, o_lat, o_lon, d_lat, d_lon, slack=1.2):
-    """Is the plane actually on the corridor between origin and destination?
-
-    adsbdb routes are keyed by flight number and are often stale/wrong, so we
-    sanity-check geometry: a plane en route has
-    (origin->plane) + (plane->destination) ~= (origin->destination). If the
-    detour exceeds `slack` x the direct distance, the route almost certainly
-    doesn't belong to this aircraft right now, so we reject it.
-    """
-    if None in (plane_lat, plane_lon, o_lat, o_lon, d_lat, d_lon):
-        return False
-    direct = haversine_km(o_lat, o_lon, d_lat, d_lon)
-    if direct <= 1.0:
-        return False  # origin == destination or missing -> meaningless
-    via = (haversine_km(o_lat, o_lon, plane_lat, plane_lon)
-           + haversine_km(plane_lat, plane_lon, d_lat, d_lon))
-    return via <= direct * slack
-
-
 def format_flight(flight, units="imperial", close_km=DEFAULT_CLOSE_KM):
     """Turn a selected flight into short display strings + a color.
 
@@ -231,71 +212,40 @@ def _truncate(text, limit=MAX_LINE):
     return text if len(text) <= limit else text[:limit]
 
 
-def _airline_short(name):
-    """Fit an airline name on one line: whole name if it fits, else first word."""
-    if len(name) <= MAX_LINE:
-        return name
-    return name.split(" ")[0][:MAX_LINE]
+def format_flight_lines(flight, route, units="imperial", close_km=DEFAULT_CLOSE_KM):
+    """Build the 3 display lines from an OpenSky flight + FlightAware `route`.
 
-
-def _compact_distance(distance_km, units):
-    """Short distance for the type line, e.g. '8mi' or '8km' (no decimals)."""
-    if units == "metric":
-        return "{:.0f}km".format(distance_km)
-    return "{:.0f}mi".format(distance_km * MILES_PER_KM)
-
-
-def format_enriched_flight(flight, enrichment, units="imperial",
-                           close_km=DEFAULT_CLOSE_KM):
-    """Build the 3 display lines from a flight + adsbdb enrichment.
-
-    Layout: airline / route / type+distance. The route is shown ONLY when the
-    plane is verifiably on it (see route_is_plausible); otherwise that middle
-    line falls back to the aircraft's altitude. Degrades gracefully:
-      * line 1 -- airline, else owner, else callsign
-      * line 2 -- verified route, else altitude, else registration, else '--'
-      * line 3 -- aircraft type + distance (just distance if type unknown)
-    Color is white, or red when within close_km (super close).
+    `route` is {origin, dest, type} from FlightAware, or None when FlightAware
+    data isn't available (no key, budget exhausted, unknown flight, API error).
+      * line 1 -- departure>destination if known, else the callsign
+      * line 2 -- aircraft type if known, else the altitude (climb/descent arrow)
+      * line 3 -- distance from home
+    Color is white, or red when within close_km (nearly overhead). The distance
+    always comes from the latest OpenSky position.
     Returns {line1, line2, line3, color}.
     """
     state = flight["state"]
     callsign = (_get(state, CALLSIGN) or "").strip() or "UNKNOWN"
-    enr = enrichment or {}
+    route = route or {}
+    distance_km = flight["distance_km"]
 
-    # Line 1 -- airline, else owner, else callsign.
-    if enr.get("airline"):
-        line1 = _airline_short(enr["airline"])
-    elif enr.get("owner"):
-        line1 = _truncate(enr["owner"])
+    # Line 1 -- route (DEP>DEST) if FlightAware gave us both, else callsign.
+    if route.get("origin") and route.get("dest"):
+        line1 = _truncate("{}>{}".format(route["origin"], route["dest"]))
     else:
         line1 = _truncate(callsign)
 
-    # Line 2 -- a route only if the plane is really on it; else altitude, etc.
-    verified_route = (
-        enr.get("origin") and enr.get("dest") and route_is_plausible(
-            _get(state, LATITUDE), _get(state, LONGITUDE),
-            enr.get("o_lat"), enr.get("o_lon"),
-            enr.get("d_lat"), enr.get("d_lon"))
-    )
-    if verified_route:
-        line2 = _truncate("{}>{}".format(enr["origin"], enr["dest"]))
+    # Line 2 -- aircraft type if known, else altitude.
+    if route.get("type"):
+        line2 = _truncate(route["type"])
     else:
-        altitude = _altitude_text(state, units)
-        if altitude is not None:
-            line2 = _truncate(altitude)
-        elif enr.get("registration"):
-            line2 = _truncate(enr["registration"])
-        else:
-            line2 = "--"
+        line2 = _altitude_text(state, units) or "ALT --"
 
-    # Line 3 -- aircraft type + compact distance.
-    distance_km = flight["distance_km"]
-    dist = _compact_distance(distance_km, units)
-    if enr.get("type"):
-        room = max(1, MAX_LINE - len(dist) - 1)  # leave a space before distance
-        line3 = "{} {}".format(_truncate(enr["type"], room), dist)
+    # Line 3 -- distance from home (from the latest OpenSky coordinates).
+    if units == "metric":
+        line3 = "{:.1f} km".format(distance_km)
     else:
-        line3 = dist
+        line3 = "{:.1f} mi".format(distance_km * MILES_PER_KM)
 
     return {
         "line1": line1,

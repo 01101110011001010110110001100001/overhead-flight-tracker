@@ -5,10 +5,17 @@
 # driving one 64x32 HUB75 panel. Shows the closest airborne aircraft near your
 # home using the OpenSky Network API.
 #
+# OpenSky detects aircraft near home and provides their positions/distance;
+# FlightAware fills in departure airport, destination airport, and aircraft type
+# for each newly detected flight (cached, budget-limited).
+#
 # Structure:
 #   flight_display.py -- the panel (hardware)
 #   flight_filter.py  -- which plane to show + unit formatting (pure logic)
-#   opensky.py        -- OAuth2 + API calls (network)
+#   opensky.py        -- OpenSky OAuth2 + positions (network)
+#   flightaware.py    -- FlightAware route/type lookups (network)
+#   budget.py         -- persistent FlightAware spend tracker (NVM)
+#   clock.py          -- UTC -> St. Louis time (pure logic)
 #   code.py (this)    -- glue: settings, Wi-Fi, main loop, error recovery
 #
 # All secrets and your home coordinates live in settings.toml (git-ignored).
@@ -27,7 +34,12 @@ from flight_display import build_display, FlightDisplay
 import flight_filter as ff
 import clock
 from opensky import OpenSkyClient, RateLimited, OpenSkyError
-from enrich import AircraftEnricher
+from flightaware import FlightAwareClient
+from budget import BudgetTracker
+
+# Root CA for FlightAware's API host (aeroapi.flightaware.com uses an SSL.com
+# certificate that isn't in CircuitPython's default bundle).
+FLIGHTAWARE_CERT_PATH = "/flightaware_ssl_root.pem"
 
 
 # ----------------------------------------------------------------------------
@@ -72,6 +84,20 @@ CLOCK_LABEL = getenv_str("CLOCK_LABEL", "ST LOUIS")
 SPLASH_TOP = getenv_str("SPLASH_TOP", "NELA'S")
 SPLASH_BOTTOM = getenv_str("SPLASH_BOTTOM", "SKYWATCH")
 SPLASH_SECONDS = 2
+
+# FlightAware AeroAPI (optional: without a key, we run OpenSky-only).
+FLIGHTAWARE_API_KEY = getenv_str("FLIGHTAWARE_API_KEY", "")
+# Total monthly allowance in USD you're willing to use ($5 free + up to $10 paid).
+FLIGHTAWARE_BUDGET_USD = getenv_float("FLIGHTAWARE_BUDGET_USD", 15.0)
+# Estimated USD per /flights/{ident} query (1 result set). Confirm the exact
+# figure in your AeroAPI dashboard; default is deliberately conservative (high).
+FLIGHTAWARE_COST_PER_QUERY = getenv_float("FLIGHTAWARE_COST_PER_QUERY", 0.012)
+# Safety margin left unspent below the budget.
+FLIGHTAWARE_MARGIN_USD = getenv_float("FLIGHTAWARE_MARGIN_USD", 0.50)
+
+# Treat an empty or still-placeholder key as "no key".
+if FLIGHTAWARE_API_KEY and FLIGHTAWARE_API_KEY.startswith("your-"):
+    FLIGHTAWARE_API_KEY = ""
 
 # Convert the user's radius (miles or km) into km for the math.
 if UNITS == "metric":
@@ -121,19 +147,30 @@ def current_utc(time_ref):
     return int(time_ref["utc"] + (time.monotonic() - time_ref["mono"]))
 
 
+NTP_RESYNC_SECONDS = 3600  # re-sync the clock from NTP at most once an hour
+
+
 def sync_time_from_ntp(time_ref, ntp):
-    """Anchor the clock to accurate NTP time. Best-effort; keeps last good time
-    on failure (some networks block NTP, in which case we fall back to OpenSky's
-    timestamp). adafruit_ntp caches internally, so this only hits the network
-    about once an hour."""
+    """Anchor the clock to accurate NTP time, at most once an hour.
+
+    IMPORTANT: between syncs the clock advances via current_utc()'s monotonic
+    extrapolation -- NOT by re-reading NTP. (adafruit_ntp returns its cached sync
+    value between network updates, so re-anchoring every loop would FREEZE the
+    clock at the last sync.) Best-effort: on failure we keep the last good anchor,
+    and if NTP never works we fall back to OpenSky's response timestamp."""
     if ntp is None:
         return
+    now_mono = time.monotonic()
+    last = time_ref.get("ntp_sync_mono")
+    if time_ref.get("ntp_ok") and last is not None and (now_mono - last) < NTP_RESYNC_SECONDS:
+        return  # synced recently; let current_utc() tick via monotonic
     try:
         dt = ntp.datetime  # UTC struct_time (tz_offset=0)
         time_ref["utc"] = clock.utc_from_components(
             dt.tm_year, dt.tm_mon, dt.tm_mday, dt.tm_hour, dt.tm_min, dt.tm_sec)
         time_ref["mono"] = time.monotonic()
         time_ref["ntp_ok"] = True
+        time_ref["ntp_sync_mono"] = now_mono
     except Exception as error:  # noqa: BLE001 -- NTP blocked/unreachable
         print("NTP sync failed (will fall back to OpenSky time):", error)
 
@@ -161,13 +198,18 @@ def sleep_with_clock(ui, seconds, clock_active, time_ref):
 # One refresh: fetch -> filter -> render. Returns True if the clock fallback is
 # now showing (so the caller keeps it ticking). Raises on network/API failure.
 # ----------------------------------------------------------------------------
-def refresh_once(client, enricher, ui, time_ref):
+def refresh_once(client, fa_client, budget, ui, time_ref):
     report_time, states = client.get_states(BBOX)
     # Only use OpenSky's timestamp for the clock if NTP isn't available (NTP is
     # accurate to the second; OpenSky's timestamp lags a few seconds).
     if report_time is not None and not time_ref.get("ntp_ok"):
         time_ref["utc"] = report_time
         time_ref["mono"] = time.monotonic()
+
+    # Roll the FlightAware budget into the current billing month once we know it.
+    utc = current_utc(time_ref)
+    if budget is not None and utc is not None:
+        budget.set_month(clock.utc_month_id(utc))
 
     result = ff.select_closest(
         states, HOME_LAT, HOME_LON, RADIUS_KM,
@@ -178,12 +220,11 @@ def refresh_once(client, enricher, ui, time_ref):
         state = flight["state"]
         callsign = (ff._get(state, ff.CALLSIGN) or "").strip()
         icao24 = ff._get(state, ff.ICAO24)
-        plane_lat = ff._get(state, ff.LATITUDE)
-        plane_lon = ff._get(state, ff.LONGITUDE)
-        # Look up airline/route/type (best-effort; never raises).
-        enrichment = enricher.enrich(callsign, icao24, plane_lat, plane_lon)
-        shown = ff.format_enriched_flight(flight, enrichment, units=UNITS,
-                                          close_km=CLOSE_KM)
+        # FlightAware route/type for THIS aircraft (cached per icao24; a given
+        # plane is looked up at most once). None when FA is off/out of budget.
+        route = fa_client.lookup(icao24, callsign) if fa_client else None
+        shown = ff.format_flight_lines(flight, route, units=UNITS,
+                                       close_km=CLOSE_KM)
         print("Closest:", shown["line1"], "|", shown["line2"], "|", shown["line3"])
         ui.show_flight(shown["line1"], shown["line2"], shown["line3"],
                        color=shown["color"])
@@ -228,14 +269,36 @@ def main():
     connect_wifi(ui)
 
     pool = socketpool.SocketPool(wifi.radio)
-    # Modern CircuitPython bundles Mozilla CA roots, so the default SSL context
-    # trusts opensky-network.org without shipping a .pem file.
+    # OpenSky uses a Let's Encrypt cert, covered by CircuitPython's default bundle.
     context = ssl.create_default_context()
     requests_session = adafruit_requests.Session(pool, context)
     client = OpenSkyClient(requests_session, CLIENT_ID, CLIENT_SECRET)
-    enricher = AircraftEnricher(requests_session)
-    # Accurate time from an NTP server (UTC). .datetime caches for an hour.
-    ntp = adafruit_ntp.NTP(pool, tz_offset=0, cache_seconds=3600)
+
+    # FlightAware: optional. Its API host uses an SSL.com cert that the default
+    # bundle doesn't include, so give it a SEPARATE context loaded with that root.
+    fa_client = None
+    budget = None
+    if FLIGHTAWARE_API_KEY:
+        budget = BudgetTracker(FLIGHTAWARE_COST_PER_QUERY, FLIGHTAWARE_BUDGET_USD,
+                               FLIGHTAWARE_MARGIN_USD)
+        try:
+            fa_context = ssl.create_default_context()
+            with open(FLIGHTAWARE_CERT_PATH, "r") as certfile:
+                fa_context.load_verify_locations(cadata=certfile.read())
+            fa_session = adafruit_requests.Session(pool, fa_context)
+            fa_client = FlightAwareClient(fa_session, FLIGHTAWARE_API_KEY, budget)
+            print("FlightAware enabled. Est. spent this month: ${:.2f} of ${:.2f}".format(
+                budget.spent_usd(), budget.hard_limit))
+        except OSError:
+            print("FlightAware root cert missing ({}); OpenSky-only.".format(
+                FLIGHTAWARE_CERT_PATH))
+            fa_client = None
+    else:
+        print("No FlightAware key set; OpenSky-only (no route/type).")
+
+    # Accurate time from an NTP server (UTC). cache_seconds=0 so each (hourly)
+    # sync_time_from_ntp() call does a fresh query; our own timer limits how often.
+    ntp = adafruit_ntp.NTP(pool, tz_offset=0)
 
     # Clock anchor: NTP when available, else OpenSky's response timestamp.
     time_ref = {"utc": None, "mono": 0.0, "ntp_ok": False}
@@ -256,7 +319,7 @@ def main():
                 _c = clock.format_central_clock(_utc)
                 print("time {} {} (src: {})".format(
                     _c["time"], _c["abbr"], "NTP" if time_ref.get("ntp_ok") else "OpenSky"))
-            clock_active = refresh_once(client, enricher, ui, time_ref)
+            clock_active = refresh_once(client, fa_client, budget, ui, time_ref)
             backoff = BACKOFF_START  # success resets the backoff
 
         except RateLimited as limited:

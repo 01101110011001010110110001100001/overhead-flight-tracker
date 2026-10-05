@@ -30,6 +30,25 @@ CIRCUITPY_WIFI_PASSWORD = "your-wifi-password"
 OPENSKY_CLIENT_ID = "your-opensky-client-id"
 OPENSKY_CLIENT_SECRET = "your-opensky-client-secret"
 
+# --- FlightAware AeroAPI (optional) --------------------------------------
+# Supplies departure airport, destination airport, and aircraft type for each
+# flight OpenSky detects. Get a key at https://flightaware.com/aeroapi/ (the
+# "Personal" tier includes $5 of free usage per month). Leave this empty to run
+# OpenSky-only (positions + distance, no route/type).
+FLIGHTAWARE_API_KEY = "your-flightaware-aeroapi-key"
+
+# Total monthly API spend you'll allow, in USD: the $5 free credit plus however
+# much you're willing to pay (here $5 + $10 = $15). The code stops FlightAware
+# lookups before reaching this (minus the margin below). QUOTED (decimal).
+FLIGHTAWARE_BUDGET_USD = "15"
+# Safety margin left unspent below the budget. QUOTED (decimal).
+FLIGHTAWARE_MARGIN_USD = "0.50"
+# Estimated cost of ONE /flights/{ident} query (1 result set) in USD. Confirm the
+# exact price on your AeroAPI dashboard and set it here; the default is a
+# deliberately conservative (high) estimate so the tracker stops early rather
+# than overspending. QUOTED (decimal).
+FLIGHTAWARE_COST_PER_QUERY = "0.012"
+
 # --- Home location -------------------------------------------------------
 # Your house, in decimal degrees. QUOTED because they are decimals (see note).
 # North latitude and East longitude are positive; South and West are negative.
