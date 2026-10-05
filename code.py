@@ -144,20 +144,26 @@ def connect_wifi(ui):
 def current_utc(time_ref):
     if time_ref["utc"] is None:
         return None
-    return int(time_ref["utc"] + (time.monotonic() - time_ref["mono"]))
+    # IMPORTANT: compute the elapsed seconds as a SMALL number first, convert to
+    # int, THEN add to the integer epoch. CircuitPython floats are single
+    # precision (24-bit mantissa), so adding a few seconds directly to a ~1.79e9
+    # epoch in float loses ~128 s of resolution -- which made the clock freeze in
+    # ~2-minute steps and drift. Integer addition of a small delta avoids that.
+    elapsed = int(time.monotonic() - time_ref["mono"])
+    return time_ref["utc"] + elapsed
 
 
 NTP_RESYNC_SECONDS = 3600  # re-sync the clock from NTP at most once an hour
+SPEND_LOG_SECONDS = 3600   # log the FlightAware spend estimate at most hourly
 
 
 def sync_time_from_ntp(time_ref, ntp):
     """Anchor the clock to accurate NTP time, at most once an hour.
 
-    IMPORTANT: between syncs the clock advances via current_utc()'s monotonic
-    extrapolation -- NOT by re-reading NTP. (adafruit_ntp returns its cached sync
-    value between network updates, so re-anchoring every loop would FREEZE the
-    clock at the last sync.) Best-effort: on failure we keep the last good anchor,
-    and if NTP never works we fall back to OpenSky's response timestamp."""
+    Between syncs the clock advances via current_utc()'s integer monotonic
+    extrapolation; the hourly re-sync just corrects any slow drift (and avoids a
+    network round-trip every loop). Best-effort: on failure we keep the last good
+    anchor, and if NTP never works we fall back to OpenSky's response timestamp."""
     if ntp is None:
         return
     now_mono = time.monotonic()
@@ -307,6 +313,8 @@ def main():
     # Clock anchor: NTP when available, else OpenSky's response timestamp.
     time_ref = {"utc": None, "mono": 0.0, "ntp_ok": False}
 
+    last_spend_log = None  # monotonic time of the last hourly spend report
+
     backoff = BACKOFF_START
     while True:
         wait = REFRESH_SECONDS
@@ -318,6 +326,16 @@ def main():
                 connect_wifi(ui)
 
             sync_time_from_ntp(time_ref, ntp)  # keep the clock accurate
+
+            # Report estimated FlightAware spend once an hour (and on first loop).
+            if budget is not None:
+                now_mono = time.monotonic()
+                if last_spend_log is None or (now_mono - last_spend_log) >= SPEND_LOG_SECONDS:
+                    print("FlightAware budget: est. ${:.2f} of ${:.2f} spent this "
+                          "month ({} queries)".format(
+                              budget.spent_usd(), budget.hard_limit, budget.count))
+                    last_spend_log = now_mono
+
             view = refresh_once(client, fa_client, budget, ui, time_ref)
             backoff = BACKOFF_START  # success resets the backoff
 
