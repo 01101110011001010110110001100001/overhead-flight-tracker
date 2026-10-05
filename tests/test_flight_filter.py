@@ -192,6 +192,63 @@ class SelectColorIntegrationTests(unittest.TestCase):
         self.assertEqual(out["color"], ff.PROX_NEAR)
 
 
+class EnrichedFlightTests(unittest.TestCase):
+    def _flight(self, callsign="EDV4648", dist_km=12.87, radius=40.0):
+        # 12.87 km ~= 8 mi
+        return {"state": make_state(callsign=callsign), "distance_km": dist_km,
+                "radius_km": radius}
+
+    def test_full_airline_route_type(self):
+        enr = {"airline": "Endeavor Air", "origin": "LEX", "dest": "ATL",
+               "type": "CRJ9", "registration": "N304PQ", "owner": None}
+        out = ff.format_enriched_flight(self._flight(), enr, units="imperial")
+        self.assertEqual(out["line1"], "Endeavor")      # first word (name > 10)
+        self.assertEqual(out["line2"], "LEX>ATL")
+        self.assertEqual(out["line3"], "CRJ9 8mi")
+
+    def test_short_airline_kept_whole(self):
+        enr = {"airline": "Delta", "origin": "STL", "dest": "JFK", "type": "A320"}
+        out = ff.format_enriched_flight(self._flight(), enr)
+        self.assertEqual(out["line1"], "Delta")
+
+    def test_ga_fallback_owner_and_registration(self):
+        enr = {"airline": None, "origin": None, "dest": None,
+               "type": "C172", "registration": "N512WT", "owner": "Flying Club"}
+        out = ff.format_enriched_flight(self._flight("N512WT", dist_km=3.2), enr)
+        self.assertEqual(out["line1"], "Flying Clu")    # owner, truncated to 10
+        self.assertEqual(out["line2"], "N512WT")        # registration as route
+        self.assertEqual(out["line3"], "C172 2mi")
+
+    def test_no_enrichment_at_all(self):
+        out = ff.format_enriched_flight(self._flight("UAL9"), {}, units="imperial")
+        self.assertEqual(out["line1"], "UAL9")          # callsign
+        self.assertEqual(out["line2"], "--")
+        self.assertEqual(out["line3"], "8mi")           # distance only
+
+    def test_missing_type_shows_distance_only(self):
+        enr = {"airline": "United", "origin": "ORD", "dest": "DEN", "type": None}
+        out = ff.format_enriched_flight(self._flight(), enr)
+        self.assertEqual(out["line3"], "8mi")
+
+    def test_metric_distance(self):
+        enr = {"airline": "KLM", "origin": "AMS", "dest": "LHR", "type": "B738"}
+        out = ff.format_enriched_flight(self._flight(dist_km=10.0), enr, units="metric")
+        self.assertEqual(out["line3"], "B738 10km")
+
+    def test_lines_fit_panel(self):
+        enr = {"airline": "Verylongairlinename Co", "origin": "ABCD",
+               "dest": "WXYZ", "type": "SUPERLONGTYPE"}
+        out = ff.format_enriched_flight(self._flight(), enr)
+        for key in ("line1", "line2", "line3"):
+            self.assertLessEqual(len(out[key]), ff.MAX_LINE,
+                                 "{} too long: {!r}".format(key, out[key]))
+
+    def test_color_by_proximity(self):
+        enr = {"airline": "Delta", "origin": "A", "dest": "B", "type": "A320"}
+        out = ff.format_enriched_flight(self._flight(dist_km=40.0, radius=40.0), enr)
+        self.assertEqual(out["color"], ff.PROX_FAR)
+
+
 class ScaleColorTests(unittest.TestCase):
     def test_full_is_unchanged(self):
         self.assertEqual(ff.scale_color(0x00CC33, 1.0), 0x00CC33)

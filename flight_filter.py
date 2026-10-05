@@ -15,6 +15,7 @@
 import math
 
 # --- OpenSky state-vector field indices ----------------------------------
+ICAO24 = 0          # str, lowercase hex Mode-S address (used for type lookup)
 CALLSIGN = 1        # str, may be None or padded with spaces
 TIME_POSITION = 3   # int Unix seconds of last position update, may be None
 LONGITUDE = 5       # float degrees WGS-84, may be None
@@ -222,5 +223,74 @@ def format_flight(flight, units="imperial"):
         "callsign": callsign,
         "altitude": altitude,
         "distance": distance,
+        "color": proximity_color(distance_km, radius_km),
+    }
+
+
+# Longest string that fits one line of the 6px font on a 64px-wide panel.
+MAX_LINE = 10
+
+
+def _truncate(text, limit=MAX_LINE):
+    return text if len(text) <= limit else text[:limit]
+
+
+def _airline_short(name):
+    """Fit an airline name on one line: whole name if it fits, else first word."""
+    if len(name) <= MAX_LINE:
+        return name
+    return name.split(" ")[0][:MAX_LINE]
+
+
+def _compact_distance(distance_km, units):
+    """Short distance for the type line, e.g. '8mi' or '8km' (no decimals)."""
+    if units == "metric":
+        return "{:.0f}km".format(distance_km)
+    return "{:.0f}mi".format(distance_km * MILES_PER_KM)
+
+
+def format_enriched_flight(flight, enrichment, units="imperial"):
+    """Build the 3 display lines from a flight + adsbdb enrichment.
+
+    Layout: airline / route / type+distance. Degrades gracefully:
+      * no airline  -> owner, else callsign
+      * no route    -> registration, else '--'
+      * no type     -> just the distance
+    Returns {line1, line2, line3, color}.
+    """
+    state = flight["state"]
+    callsign = (_get(state, CALLSIGN) or "").strip() or "UNKNOWN"
+    enr = enrichment or {}
+
+    # Line 1 -- airline, else owner, else callsign.
+    if enr.get("airline"):
+        line1 = _airline_short(enr["airline"])
+    elif enr.get("owner"):
+        line1 = _truncate(enr["owner"])
+    else:
+        line1 = _truncate(callsign)
+
+    # Line 2 -- route (origin>dest), else registration, else placeholder.
+    if enr.get("origin") and enr.get("dest"):
+        line2 = _truncate("{}>{}".format(enr["origin"], enr["dest"]))
+    elif enr.get("registration"):
+        line2 = _truncate(enr["registration"])
+    else:
+        line2 = "--"
+
+    # Line 3 -- aircraft type + compact distance (distance right-aligned-ish).
+    distance_km = flight["distance_km"]
+    radius_km = flight.get("radius_km", distance_km)
+    dist = _compact_distance(distance_km, units)
+    if enr.get("type"):
+        room = max(1, MAX_LINE - len(dist) - 1)  # leave a space before distance
+        line3 = "{} {}".format(_truncate(enr["type"], room), dist)
+    else:
+        line3 = dist
+
+    return {
+        "line1": line1,
+        "line2": line2,
+        "line3": line3,
         "color": proximity_color(distance_km, radius_km),
     }

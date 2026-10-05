@@ -63,29 +63,35 @@ def main():
     ui.show_splash("NELA'S", "SKYWATCH")
     time.sleep(3)
 
-    while True:
-        # 1) Show the closest aircraft picked from the sample set, both units.
-        #    Color warms as the plane gets closer; ^/v shows climb/descent.
-        for units in ("imperial", "metric"):
-            result = ff.select_closest(
-                SAMPLE_STATES, HOME_LAT, HOME_LON,
-                radius_km=15, now=NOW, max_age_s=60)
-            flight = ff.format_flight(result["flight"], units=units)
-            print("Closest ({}): {} {} {} color={:#08x}".format(
-                units, flight["callsign"], flight["altitude"],
-                flight["distance"], flight["color"]))
-            ui.show_flight(flight["callsign"], flight["altitude"],
-                           flight["distance"], color=flight["color"])
-            time.sleep(4)
+    # Sample adsbdb-style enrichment for the demo (offline; no network).
+    # Each entry pairs a flight with airline/route/type so we can show the real
+    # layout: airline / route / type+distance.
+    demos = [
+        ({"state": make_state("EDV4648", 40.720, -74.003, 9448.0),
+          "distance_km": 12.9, "radius_km": 40.0},
+         {"airline": "Endeavor Air", "origin": "LEX", "dest": "ATL",
+          "type": "CRJ9", "registration": "N304PQ", "owner": None}),
+        ({"state": make_state("SWA1180", 40.735, -74.010, 3048.0),
+          "distance_km": 3.2, "radius_km": 40.0},
+         {"airline": "Southwest Airlines", "origin": "STL", "dest": "MDW",
+          "type": "B738", "registration": None, "owner": None}),
+        # General-aviation plane: no route -> falls back to owner + registration.
+        ({"state": make_state("N512WT", 40.700, -74.050, 1524.0),
+          "distance_km": 20.0, "radius_km": 40.0},
+         {"airline": None, "origin": None, "dest": None,
+          "type": "C172", "registration": "N512WT", "owner": "Spirit Flying Club"}),
+    ]
 
-        # 2) Show a flight with a missing callsign / missing altitude explicitly.
-        odd = ff.format_flight(
-            {"state": make_state("", 40.715, -74.005, None), "distance_km": 2.0,
-             "radius_km": 15.0},
-            units="imperial")
-        ui.show_flight(odd["callsign"], odd["altitude"], odd["distance"],
-                       color=odd["color"])
-        time.sleep(4)
+    while True:
+        # 1) Show enriched flights: airline / route / type+distance.
+        #    Color warms as the plane gets closer.
+        for flight, enrichment in demos:
+            shown = ff.format_enriched_flight(flight, enrichment, units="imperial")
+            print("Flight: {} | {} | {} color={:#08x}".format(
+                shown["line1"], shown["line2"], shown["line3"], shown["color"]))
+            ui.show_flight(shown["line1"], shown["line2"], shown["line3"],
+                           color=shown["color"])
+            time.sleep(4)
 
         # 3) Clock fallback (shown instead of "NO FLIGHTS" in the real app).
         shown = clock.format_central_clock(SAMPLE_UTC)

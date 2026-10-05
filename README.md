@@ -43,7 +43,11 @@ CDT           <- time-zone abbreviation
 - ✅ **Proximity color**: flights glow green→amber→red as they get closer
 - ✅ **Climb/descent arrows** (`^`/`v`) next to altitude
 - ✅ Personal **boot splash** (configurable, e.g. `NELA'S SKYWATCH`)
-- ✅ **38 desktop unit tests** pass (filtering, distance, units, color, clock + DST)
+- ✅ **Airline / route / aircraft-type** display via adsbdb enrichment
+  (e.g. `Endeavor` / `LEX>ATL` / `CRJ9 8mi`), with graceful fallbacks
+- ✅ Configurable **brightness** (dim by default — HUB75 panels are glaring)
+- ✅ **50 desktop unit tests** pass (filtering, distance, units, color,
+  enrichment layout, clock + DST)
 - ⬜ Flash + run on real hardware (your step — see Setup)
 
 ---
@@ -85,7 +89,8 @@ Desktop tests need only a normal **Python 3** — no extra packages.
 | `code.py` | board | Main app: settings, Wi-Fi, refresh loop, recovery |
 | `flight_display.py` | board | 64 × 32 panel setup + rendering |
 | `opensky.py` | board (network) | OAuth2 login, token renewal, `/states/all` |
-| `flight_filter.py` | anywhere | Distance, filtering, unit formatting (pure logic) |
+| `enrich.py` | board (network) | Airline/route/type lookup via adsbdb (cached) |
+| `flight_filter.py` | anywhere | Distance, filtering, unit + layout formatting (pure) |
 | `clock.py` | anywhere | UTC → St. Louis (US Central) time with DST (pure logic) |
 | `display_test.py` | board | Display-only demo, **no credentials needed** |
 | `tests/test_flight_filter.py` | desktop | Unit tests for the filtering logic |
@@ -154,6 +159,7 @@ CIRCUITPY/
 ├── flight_display.py
 ├── flight_filter.py
 ├── opensky.py
+├── enrich.py
 ├── clock.py
 ├── settings.toml        <- your private config
 └── lib/
@@ -181,9 +187,11 @@ The board auto-runs `code.py`. Open the serial console to watch the log.
    valid position**, **outside the radius** (exact great-circle distance), or
    with a **stale** position (older than `STALE_SECONDS`, judged against
    OpenSky's own response timestamp so the board needs no accurate clock).
-5. The **closest** survivor is formatted (meters → feet, km → miles) and shown,
-   colored by proximity (green far → amber → red overhead) with a `^`/`v` arrow
-   for climb/descent.
+5. The **closest** survivor is looked up on **adsbdb** (airline + route by
+   callsign, aircraft type by hex; cached) and shown as **airline / route /
+   type+distance**, colored by proximity (green far → amber → red overhead).
+   If a plane has no route (e.g. small private aircraft), it falls back to
+   owner / registration / type.
 6. If nothing qualifies and `CLOCK_FALLBACK` is on, the panel shows a **St.
    Louis clock** (see below); otherwise `NO FLIGHTS`. If nearby planes were only
    dropped for staleness, you get `STALE DATA`; network/API problems show
@@ -246,7 +254,11 @@ Hardware has **not** been tested yet — verify on your board.
   https://learn.adafruit.com/matrixportal-s3-flight-proximity-tracker
   (The original uses FlightAware and a 128 × 64 display; this project replaces
   FlightAware with OpenSky and targets a 64 × 32 panel.)
-- Aircraft data: **The OpenSky Network**, https://opensky-network.org/.
+- Live aircraft positions: **The OpenSky Network**, https://opensky-network.org/.
+- Airline, route, and aircraft-type enrichment: **adsbdb**,
+  https://www.adsbdb.com/ (free, no key). Per adsbdb's terms, the flight-route
+  data is the work of **David Taylor (Edinburgh)** and **Jim Mason (Glasgow)**,
+  and aircraft data is sourced from **PlaneBase**.
 - This project is released under the **MIT License** (see `LICENSE`,
   Copyright 2026 Nela) — your chosen license for your original contributions.
   Adafruit's adapted portions remain under their original MIT notice, preserved

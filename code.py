@@ -26,6 +26,7 @@ from flight_display import build_display, FlightDisplay
 import flight_filter as ff
 import clock
 from opensky import OpenSkyClient, RateLimited, OpenSkyError
+from enrich import AircraftEnricher
 
 
 # ----------------------------------------------------------------------------
@@ -139,7 +140,7 @@ def sleep_with_clock(ui, seconds, clock_active, time_ref):
 # One refresh: fetch -> filter -> render. Returns True if the clock fallback is
 # now showing (so the caller keeps it ticking). Raises on network/API failure.
 # ----------------------------------------------------------------------------
-def refresh_once(client, ui, time_ref):
+def refresh_once(client, enricher, ui, time_ref):
     report_time, states = client.get_states(BBOX)
     if report_time is not None:
         # Anchor our clock to OpenSky's UTC timestamp.
@@ -152,9 +153,14 @@ def refresh_once(client, ui, time_ref):
 
     flight = result["flight"]
     if flight is not None:
-        shown = ff.format_flight(flight, units=UNITS)
-        print("Closest:", shown["callsign"], shown["altitude"], shown["distance"])
-        ui.show_flight(shown["callsign"], shown["altitude"], shown["distance"],
+        state = flight["state"]
+        callsign = (ff._get(state, ff.CALLSIGN) or "").strip()
+        icao24 = ff._get(state, ff.ICAO24)
+        # Look up airline/route/type (best-effort; never raises).
+        enrichment = enricher.enrich(callsign, icao24)
+        shown = ff.format_enriched_flight(flight, enrichment, units=UNITS)
+        print("Closest:", shown["line1"], "|", shown["line2"], "|", shown["line3"])
+        ui.show_flight(shown["line1"], shown["line2"], shown["line3"],
                        color=shown["color"])
         return False
 
@@ -199,6 +205,7 @@ def main():
     context = ssl.create_default_context()
     requests_session = adafruit_requests.Session(pool, context)
     client = OpenSkyClient(requests_session, CLIENT_ID, CLIENT_SECRET)
+    enricher = AircraftEnricher(requests_session)
 
     # Clock anchor: filled in from OpenSky's response timestamp on first success.
     time_ref = {"utc": None, "mono": 0.0}
@@ -213,7 +220,7 @@ def main():
                 print("Wi-Fi dropped; reconnecting.")
                 connect_wifi(ui)
 
-            clock_active = refresh_once(client, ui, time_ref)
+            clock_active = refresh_once(client, enricher, ui, time_ref)
             backoff = BACKOFF_START  # success resets the backoff
 
         except RateLimited as limited:
