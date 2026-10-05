@@ -45,12 +45,13 @@ CDT           <- time-zone abbreviation
 - ✅ Personal **boot splash** (configurable, e.g. `NELA'S SKYWATCH`)
 - ✅ **Airline / route / aircraft-type** display via adsbdb enrichment
   (e.g. `Endeavor` / `LEX>ATL` / `CRJ9 8mi`), with graceful fallbacks
-- ✅ **Route verification** — only shows a route when the plane is really on that
-  corridor (adsbdb routes are often stale); otherwise shows altitude
+- ✅ **Accurate routes** from the same source as the OpenSky map (adsb.lol),
+  with current-leg selection for multi-leg flights and a corridor-verification
+  backstop; shows altitude when no trustworthy route is available
 - ✅ **Neutral white** display, **red only when a plane is nearly overhead**
 - ✅ Configurable **brightness** (dim by default — HUB75 panels are glaring)
-- ✅ **53 desktop unit tests** pass (filtering, distance, units, color,
-  enrichment layout, route verification, clock + DST)
+- ✅ **61 desktop unit tests** pass (filtering, distance, units, color,
+  enrichment layout, route verification, leg selection, clock + DST)
 - ⬜ Flash + run on real hardware (your step — see Setup)
 
 ---
@@ -92,7 +93,7 @@ Desktop tests need only a normal **Python 3** — no extra packages.
 | `code.py` | board | Main app: settings, Wi-Fi, refresh loop, recovery |
 | `flight_display.py` | board | 64 × 32 panel setup + rendering |
 | `opensky.py` | board (network) | OAuth2 login, token renewal, `/states/all` |
-| `enrich.py` | board (network) | Airline/route/type lookup via adsbdb (cached) |
+| `enrich.py` | board (network) | Route (adsb.lol) + airline/type (adsbdb), cached |
 | `flight_filter.py` | anywhere | Distance, filtering, unit + layout formatting (pure) |
 | `clock.py` | anywhere | UTC → St. Louis (US Central) time with DST (pure logic) |
 | `display_test.py` | board | Display-only demo, **no credentials needed** |
@@ -194,11 +195,12 @@ The board auto-runs `code.py`. Open the serial console to watch the log.
    callsign, aircraft type by hex; cached) and shown as **airline / route /
    type+distance** in neutral **white**, turning **red** only when the plane is
    within `CLOSE_RADIUS` (nearly overhead).
-6. **The route is verified before it's shown.** adsbdb routes are keyed by flight
-   number and are often stale/wrong, so the route is displayed only when the
-   plane is actually on the corridor between those two airports
-   (origin→plane→destination ≈ origin→destination). If it isn't — or there's no
-   route (e.g. a private plane) — the middle line shows the **altitude** instead.
+6. **Routes come from the same data the OpenSky map uses** (adsb.lol VRS standing
+   data), and for multi-leg flights the **current leg** is chosen by the plane's
+   position. As a backstop, a route is shown only when the plane is actually on
+   the corridor between those two airports (origin→plane→destination ≈
+   origin→destination). If it isn't — or there's no route (e.g. a private
+   plane) — the middle line shows the **altitude** instead.
 6. If nothing qualifies and `CLOCK_FALLBACK` is on, the panel shows a **St.
    Louis clock** (see below); otherwise `NO FLIGHTS`. If nearby planes were only
    dropped for staleness, you get `STALE DATA`; network/API problems show
@@ -262,10 +264,11 @@ Hardware has **not** been tested yet — verify on your board.
   (The original uses FlightAware and a 128 × 64 display; this project replaces
   FlightAware with OpenSky and targets a 64 × 32 panel.)
 - Live aircraft positions: **The OpenSky Network**, https://opensky-network.org/.
-- Airline, route, and aircraft-type enrichment: **adsbdb**,
-  https://www.adsbdb.com/ (free, no key). Per adsbdb's terms, the flight-route
-  data is the work of **David Taylor (Edinburgh)** and **Jim Mason (Glasgow)**,
-  and aircraft data is sourced from **PlaneBase**.
+- Routes: **adsb.lol VRS standing data** (https://www.adsb.lol/) — the same
+  dataset the OpenSky/tar1090 map uses, so routes match what you see there.
+- Airline names and aircraft types: **adsbdb**, https://www.adsbdb.com/ (free,
+  no key). Per adsbdb's terms, route data is the work of **David Taylor
+  (Edinburgh)** and **Jim Mason (Glasgow)**; aircraft data is from **PlaneBase**.
 - This project is released under the **MIT License** (see `LICENSE`,
   Copyright 2026 Nela) — your chosen license for your original contributions.
   Adafruit's adapted portions remain under their original MIT notice, preserved

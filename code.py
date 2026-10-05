@@ -159,8 +159,10 @@ def refresh_once(client, enricher, ui, time_ref):
         state = flight["state"]
         callsign = (ff._get(state, ff.CALLSIGN) or "").strip()
         icao24 = ff._get(state, ff.ICAO24)
+        plane_lat = ff._get(state, ff.LATITUDE)
+        plane_lon = ff._get(state, ff.LONGITUDE)
         # Look up airline/route/type (best-effort; never raises).
-        enrichment = enricher.enrich(callsign, icao24)
+        enrichment = enricher.enrich(callsign, icao24, plane_lat, plane_lon)
         shown = ff.format_enriched_flight(flight, enrichment, units=UNITS,
                                           close_km=CLOSE_KM)
         print("Closest:", shown["line1"], "|", shown["line2"], "|", shown["line3"])

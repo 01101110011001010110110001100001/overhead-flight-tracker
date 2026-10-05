@@ -1,43 +1,80 @@
 # SPDX-FileCopyrightText: 2026 Nela
 # SPDX-License-Identifier: MIT
 #
-# Aircraft enrichment via the free adsbdb API (no API key required).
-# OpenSky's live feed has no route or aircraft type, so for the ONE closest
-# plane we look up:
-#   * route + airline  by callsign  -> https://api.adsbdb.com/v0/callsign/{cs}
-#   * aircraft type    by Mode-S/hex -> https://api.adsbdb.com/v0/aircraft/{hex}
+# Aircraft enrichment for the ONE closest plane. OpenSky's live feed has no
+# route, airline name, or aircraft type, so we look those up here.
 #
-# Design notes:
-#   * Results (including "not found") are cached so the same plane isn't
-#     re-queried every refresh.
-#   * Every lookup is best-effort: any failure (network, 404, bad JSON) returns
-#     empty fields instead of raising, so enrichment can NEVER crash the main
-#     loop or hide a flight.
+# Sources (all free, no API key):
+#   * ROUTE  -> adsb.lol "VRS standing data" static files. This is the SAME
+#     dataset the OpenSky map (tar1090/readsb) uses, so routes match what you
+#     see there. For multi-leg flights it lists every stop and we pick the
+#     current leg using the plane's position.
+#       https://vrs-standing-data.adsb.lol/routes/<CS[:2]>/<CALLSIGN>.json
+#   * AIRLINE NAME -> adsbdb /callsign (its airline field is reliable; we ignore
+#     its route, which is often stale).
+#   * AIRCRAFT TYPE -> adsbdb /aircraft by Mode-S hex (tied to the physical
+#     airframe, so it's reliable).
 #
-# Attribution (required by adsbdb): flight-route data is the work of David Taylor
-# (Edinburgh) and Jim Mason (Glasgow); aircraft data from PlaneBase. See README.
+# Everything is cached and best-effort: any failure returns empty fields rather
+# than raising, so enrichment can never crash the main loop or hide a flight.
+#
+# Attribution: routes via adsb.lol (VRS standing data); airline/aircraft via
+# adsbdb (route data by David Taylor & Jim Mason; aircraft from PlaneBase).
 
-ROUTE_URL = "https://api.adsbdb.com/v0/callsign/{}"
-AIRCRAFT_URL = "https://api.adsbdb.com/v0/aircraft/{}"
-REQUEST_TIMEOUT = 8          # seconds; keep short so a slow API can't stall us
-CACHE_LIMIT = 64             # bound memory: clear the cache past this many keys
+from flight_filter import haversine_km
+
+ADSBDB_CALLSIGN = "https://api.adsbdb.com/v0/callsign/{}"
+ADSBDB_AIRCRAFT = "https://api.adsbdb.com/v0/aircraft/{}"
+VRS_ROUTE = "https://vrs-standing-data.adsb.lol/routes/{}/{}.json"
+REQUEST_TIMEOUT = 8
+CACHE_LIMIT = 64
 
 EMPTY = {"airline": None, "origin": None, "dest": None,
          "o_lat": None, "o_lon": None, "d_lat": None, "d_lon": None,
          "type": None, "registration": None, "owner": None}
 
 
+def _pick_leg(airports, plane_lat, plane_lon):
+    """Pick the (origin, dest) leg the plane is currently flying.
+
+    `airports` is a list of {iata, lat, lon}. For a 2-stop route that's the
+    only leg. For multi-leg routes we choose the consecutive pair whose
+    corridor the plane is closest to (smallest detour through the plane).
+    Returns (origin, dest) dicts or None.
+    """
+    pts = [a for a in airports
+           if a.get("iata") and a.get("lat") is not None and a.get("lon") is not None]
+    if len(pts) < 2:
+        return None
+    if plane_lat is None or plane_lon is None:
+        return pts[0], pts[-1]
+    best = None
+    best_cost = None
+    for i in range(len(pts) - 1):
+        a, b = pts[i], pts[i + 1]
+        direct = haversine_km(a["lat"], a["lon"], b["lat"], b["lon"])
+        via = (haversine_km(a["lat"], a["lon"], plane_lat, plane_lon)
+               + haversine_km(plane_lat, plane_lon, b["lat"], b["lon"]))
+        cost = via - direct  # 0 when the plane is exactly on this leg
+        if best_cost is None or cost < best_cost:
+            best_cost = cost
+            best = (a, b)
+    return best
+
+
 class AircraftEnricher:
     def __init__(self, requests_session):
         self._requests = requests_session
-        self._route_cache = {}
+        self._airline_cache = {}
+        self._route_cache = {}     # callsign -> list of {iata, lat, lon}
         self._aircraft_cache = {}
 
     def _get_json(self, url):
         """GET a URL and return parsed JSON dict, or None on any problem."""
         response = None
         try:
-            response = self._requests.get(url, timeout=REQUEST_TIMEOUT)
+            response = self._requests.get(
+                url, headers={"Accept": "application/json"}, timeout=REQUEST_TIMEOUT)
             if response.status_code != 200:
                 return None
             data = response.json()
@@ -54,34 +91,41 @@ class AircraftEnricher:
             cache.clear()
         cache[key] = value
 
-    def _route(self, callsign):
+    def _airline(self, callsign):
+        if callsign in self._airline_cache:
+            return self._airline_cache[callsign]
+        name = None
+        data = self._get_json(ADSBDB_CALLSIGN.format(callsign))
+        try:
+            name = data["response"]["flightroute"]["airline"]["name"]
+        except (TypeError, KeyError, AttributeError):
+            pass
+        self._cache_put(self._airline_cache, callsign, name)
+        return name
+
+    def _route_airports(self, callsign):
         if callsign in self._route_cache:
             return self._route_cache[callsign]
-        result = {"airline": None, "origin": None, "dest": None,
-                  "o_lat": None, "o_lon": None, "d_lat": None, "d_lon": None}
-        data = self._get_json(ROUTE_URL.format(callsign))
-        try:
-            route = data["response"]["flightroute"]
-            result["airline"] = route.get("airline", {}).get("name")
-            origin = route.get("origin", {})
-            dest = route.get("destination", {})
-            result["origin"] = origin.get("iata_code") or origin.get("icao_code")
-            result["dest"] = dest.get("iata_code") or dest.get("icao_code")
-            # Airport coords let us verify the plane is really on this route.
-            result["o_lat"] = origin.get("latitude")
-            result["o_lon"] = origin.get("longitude")
-            result["d_lat"] = dest.get("latitude")
-            result["d_lon"] = dest.get("longitude")
-        except (TypeError, KeyError, AttributeError):
-            pass  # leave as Nones -> caller falls back gracefully
-        self._cache_put(self._route_cache, callsign, result)
-        return result
+        airports = []
+        if len(callsign) >= 2:
+            data = self._get_json(VRS_ROUTE.format(callsign[:2], callsign))
+            try:
+                for ap in data["_airports"]:
+                    airports.append({
+                        "iata": ap.get("iata") or ap.get("icao"),
+                        "lat": ap.get("lat"),
+                        "lon": ap.get("lon"),
+                    })
+            except (TypeError, KeyError, AttributeError):
+                pass
+        self._cache_put(self._route_cache, callsign, airports)
+        return airports
 
     def _aircraft(self, icao24):
         if icao24 in self._aircraft_cache:
             return self._aircraft_cache[icao24]
         result = {"type": None, "registration": None, "owner": None}
-        data = self._get_json(AIRCRAFT_URL.format(icao24))
+        data = self._get_json(ADSBDB_AIRCRAFT.format(icao24))
         try:
             ac = data["response"]["aircraft"]
             result["type"] = ac.get("icao_type") or ac.get("type")
@@ -92,15 +136,24 @@ class AircraftEnricher:
         self._cache_put(self._aircraft_cache, icao24, result)
         return result
 
-    def enrich(self, callsign, icao24):
-        """Return {airline, origin, dest, type, registration, owner}.
+    def enrich(self, callsign, icao24, plane_lat=None, plane_lon=None):
+        """Return {airline, origin, dest, o/d coords, type, registration, owner}.
 
-        Any field may be None. Looks up route by callsign and aircraft by hex;
-        both are cached and best-effort.
+        `plane_lat`/`plane_lon` let us pick the right leg of a multi-leg route.
+        Any field may be None; all lookups are cached and best-effort.
         """
         merged = dict(EMPTY)
         if callsign:
-            merged.update(self._route(callsign))
+            merged["airline"] = self._airline(callsign)
+            leg = _pick_leg(self._route_airports(callsign), plane_lat, plane_lon)
+            if leg:
+                origin, dest = leg
+                merged["origin"] = origin["iata"]
+                merged["dest"] = dest["iata"]
+                merged["o_lat"] = origin["lat"]
+                merged["o_lon"] = origin["lon"]
+                merged["d_lat"] = dest["lat"]
+                merged["d_lon"] = dest["lon"]
         if icao24:
             merged.update(self._aircraft(icao24))
         return merged
