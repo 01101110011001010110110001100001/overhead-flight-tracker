@@ -63,30 +63,36 @@ def main():
     ui.show_splash("NELA'S", "SKYWATCH")
     time.sleep(3)
 
-    # Sample adsbdb-style enrichment for the demo (offline; no network).
-    # Each entry pairs a flight with airline/route/type so we can show the real
-    # layout: airline / route / type+distance.
+    # Airport coordinates (lat, lon) for the route-verification demo.
+    BOS, DCA = (42.366, -71.010), (38.851, -77.040)   # brackets NYC "home"
+    LAX, SFO = (33.942, -118.409), (37.621, -122.379)  # nowhere near NYC
+
+    # Sample adsbdb-style enrichment (offline; no network). Demonstrates the
+    # layout: airline / route-or-altitude / type+distance, and route VERIFICATION.
     demos = [
-        ({"state": make_state("EDV4648", 40.720, -74.003, 9448.0),
-          "distance_km": 12.9, "radius_km": 40.0},
-         {"airline": "Endeavor Air", "origin": "LEX", "dest": "ATL",
+        # Verified route: plane (NYC) is on the BOS->DCA corridor -> shows route.
+        ({"state": make_state("EDV4648", 40.720, -74.003, 9448.0, vertical_rate=4.0),
+          "distance_km": 3.2},  # ~2 mi -> super close -> RED
+         {"airline": "Endeavor Air", "origin": "BOS", "dest": "DCA",
+          "o_lat": BOS[0], "o_lon": BOS[1], "d_lat": DCA[0], "d_lon": DCA[1],
           "type": "CRJ9", "registration": "N304PQ", "owner": None}),
-        ({"state": make_state("SWA1180", 40.735, -74.010, 3048.0),
-          "distance_km": 3.2, "radius_km": 40.0},
-         {"airline": "Southwest Airlines", "origin": "STL", "dest": "MDW",
+        # Bogus route: plane (NYC) is NOT on LAX->SFO -> route hidden, shows altitude.
+        ({"state": make_state("SWA1180", 40.735, -74.010, 10668.0, vertical_rate=-3.0),
+          "distance_km": 12.9},  # ~8 mi -> white
+         {"airline": "Southwest Airlines", "origin": "LAX", "dest": "SFO",
+          "o_lat": LAX[0], "o_lon": LAX[1], "d_lat": SFO[0], "d_lon": SFO[1],
           "type": "B738", "registration": None, "owner": None}),
-        # General-aviation plane: no route -> falls back to owner + registration.
+        # General aviation: no route -> falls back to altitude.
         ({"state": make_state("N512WT", 40.700, -74.050, 1524.0),
-          "distance_km": 20.0, "radius_km": 40.0},
+          "distance_km": 20.0},
          {"airline": None, "origin": None, "dest": None,
           "type": "C172", "registration": "N512WT", "owner": "Spirit Flying Club"}),
     ]
 
     while True:
-        # 1) Show enriched flights: airline / route / type+distance.
-        #    Color warms as the plane gets closer.
+        # 1) Show enriched flights: airline / route-or-altitude / type+distance.
+        #    Red only when super close (<= 3 mi).
         for flight, enrichment in demos:
-            # close_km ~4.8 km (3 mi): the ~2 mi demo plane shows RED, rest white.
             shown = ff.format_enriched_flight(flight, enrichment,
                                               units="imperial", close_km=4.8)
             print("Flight: {} | {} | {} color={:#08x}".format(

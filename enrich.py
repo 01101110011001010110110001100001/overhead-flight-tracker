@@ -23,6 +23,7 @@ REQUEST_TIMEOUT = 8          # seconds; keep short so a slow API can't stall us
 CACHE_LIMIT = 64             # bound memory: clear the cache past this many keys
 
 EMPTY = {"airline": None, "origin": None, "dest": None,
+         "o_lat": None, "o_lon": None, "d_lat": None, "d_lon": None,
          "type": None, "registration": None, "owner": None}
 
 
@@ -56,7 +57,8 @@ class AircraftEnricher:
     def _route(self, callsign):
         if callsign in self._route_cache:
             return self._route_cache[callsign]
-        result = {"airline": None, "origin": None, "dest": None}
+        result = {"airline": None, "origin": None, "dest": None,
+                  "o_lat": None, "o_lon": None, "d_lat": None, "d_lon": None}
         data = self._get_json(ROUTE_URL.format(callsign))
         try:
             route = data["response"]["flightroute"]
@@ -65,6 +67,11 @@ class AircraftEnricher:
             dest = route.get("destination", {})
             result["origin"] = origin.get("iata_code") or origin.get("icao_code")
             result["dest"] = dest.get("iata_code") or dest.get("icao_code")
+            # Airport coords let us verify the plane is really on this route.
+            result["o_lat"] = origin.get("latitude")
+            result["o_lon"] = origin.get("longitude")
+            result["d_lat"] = dest.get("latitude")
+            result["d_lon"] = dest.get("longitude")
         except (TypeError, KeyError, AttributeError):
             pass  # leave as Nones -> caller falls back gracefully
         self._cache_put(self._route_cache, callsign, result)

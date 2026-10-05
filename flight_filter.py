@@ -162,6 +162,38 @@ def _climb_arrow(state):
     return ""
 
 
+def _altitude_text(state, units):
+    """Altitude with climb/descent arrow, e.g. '35000 ft ^' / '3000 m', or None."""
+    altitude_m = _get(state, BARO_ALTITUDE)
+    if altitude_m is None:
+        altitude_m = _get(state, GEO_ALTITUDE)
+    if altitude_m is None:
+        return None
+    arrow = _climb_arrow(state)
+    if units == "metric":
+        return "{} m{}".format(int(round(altitude_m)), arrow)
+    return "{} ft{}".format(int(round(altitude_m * FEET_PER_METER)), arrow)
+
+
+def route_is_plausible(plane_lat, plane_lon, o_lat, o_lon, d_lat, d_lon, slack=1.2):
+    """Is the plane actually on the corridor between origin and destination?
+
+    adsbdb routes are keyed by flight number and are often stale/wrong, so we
+    sanity-check geometry: a plane en route has
+    (origin->plane) + (plane->destination) ~= (origin->destination). If the
+    detour exceeds `slack` x the direct distance, the route almost certainly
+    doesn't belong to this aircraft right now, so we reject it.
+    """
+    if None in (plane_lat, plane_lon, o_lat, o_lon, d_lat, d_lon):
+        return False
+    direct = haversine_km(o_lat, o_lon, d_lat, d_lon)
+    if direct <= 1.0:
+        return False  # origin == destination or missing -> meaningless
+    via = (haversine_km(o_lat, o_lon, plane_lat, plane_lon)
+           + haversine_km(plane_lat, plane_lon, d_lat, d_lon))
+    return via <= direct * slack
+
+
 def format_flight(flight, units="imperial", close_km=DEFAULT_CLOSE_KM):
     """Turn a selected flight into short display strings + a color.
 
@@ -176,26 +208,11 @@ def format_flight(flight, units="imperial", close_km=DEFAULT_CLOSE_KM):
     if not callsign:
         callsign = "UNKNOWN"
 
-    # Prefer barometric altitude; fall back to geometric (GPS) altitude.
-    altitude_m = _get(state, BARO_ALTITUDE)
-    if altitude_m is None:
-        altitude_m = _get(state, GEO_ALTITUDE)
-
     distance_km = flight["distance_km"]
-    arrow = _climb_arrow(state)
-
+    altitude = _altitude_text(state, units) or "ALT --"
     if units == "metric":
-        if altitude_m is None:
-            altitude = "ALT --"
-        else:
-            altitude = "{} m{}".format(int(round(altitude_m)), arrow)
         distance = "{:.1f} km".format(distance_km)
-    else:  # imperial
-        if altitude_m is None:
-            altitude = "ALT --"
-        else:
-            altitude = "{} ft{}".format(
-                int(round(altitude_m * FEET_PER_METER)), arrow)
+    else:
         distance = "{:.1f} mi".format(distance_km * MILES_PER_KM)
 
     return {
@@ -232,10 +249,12 @@ def format_enriched_flight(flight, enrichment, units="imperial",
                            close_km=DEFAULT_CLOSE_KM):
     """Build the 3 display lines from a flight + adsbdb enrichment.
 
-    Layout: airline / route / type+distance. Degrades gracefully:
-      * no airline  -> owner, else callsign
-      * no route    -> registration, else '--'
-      * no type     -> just the distance
+    Layout: airline / route / type+distance. The route is shown ONLY when the
+    plane is verifiably on it (see route_is_plausible); otherwise that middle
+    line falls back to the aircraft's altitude. Degrades gracefully:
+      * line 1 -- airline, else owner, else callsign
+      * line 2 -- verified route, else altitude, else registration, else '--'
+      * line 3 -- aircraft type + distance (just distance if type unknown)
     Color is white, or red when within close_km (super close).
     Returns {line1, line2, line3, color}.
     """
@@ -251,15 +270,25 @@ def format_enriched_flight(flight, enrichment, units="imperial",
     else:
         line1 = _truncate(callsign)
 
-    # Line 2 -- route (origin>dest), else registration, else placeholder.
-    if enr.get("origin") and enr.get("dest"):
+    # Line 2 -- a route only if the plane is really on it; else altitude, etc.
+    verified_route = (
+        enr.get("origin") and enr.get("dest") and route_is_plausible(
+            _get(state, LATITUDE), _get(state, LONGITUDE),
+            enr.get("o_lat"), enr.get("o_lon"),
+            enr.get("d_lat"), enr.get("d_lon"))
+    )
+    if verified_route:
         line2 = _truncate("{}>{}".format(enr["origin"], enr["dest"]))
-    elif enr.get("registration"):
-        line2 = _truncate(enr["registration"])
     else:
-        line2 = "--"
+        altitude = _altitude_text(state, units)
+        if altitude is not None:
+            line2 = _truncate(altitude)
+        elif enr.get("registration"):
+            line2 = _truncate(enr["registration"])
+        else:
+            line2 = "--"
 
-    # Line 3 -- aircraft type + compact distance (distance right-aligned-ish).
+    # Line 3 -- aircraft type + compact distance.
     distance_km = flight["distance_km"]
     dist = _compact_distance(distance_km, units)
     if enr.get("type"):

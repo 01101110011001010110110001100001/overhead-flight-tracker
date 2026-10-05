@@ -186,64 +186,97 @@ class SelectColorIntegrationTests(unittest.TestCase):
         self.assertEqual(out["color"], ff.COLOR_CLOSE)
 
 
-class EnrichedFlightTests(unittest.TestCase):
-    def _flight(self, callsign="EDV4648", dist_km=12.87, radius=40.0):
-        # 12.87 km ~= 8 mi
-        return {"state": make_state(callsign=callsign), "distance_km": dist_km,
-                "radius_km": radius}
+# Airports for route verification. make_state() defaults put the plane at
+# (40.7128, -74.0060) = NYC, which lies on the BOS->DCA corridor but nowhere
+# near LAX->SFO.
+BOS = (42.366, -71.010)
+DCA = (38.851, -77.040)
+LAX = (33.942, -118.409)
+SFO = (37.621, -122.379)
 
-    def test_full_airline_route_type(self):
-        enr = {"airline": "Endeavor Air", "origin": "LEX", "dest": "ATL",
-               "type": "CRJ9", "registration": "N304PQ", "owner": None}
+
+def route(origin, dest, o_xy, d_xy, **extra):
+    enr = {"origin": origin, "dest": dest,
+           "o_lat": o_xy[0], "o_lon": o_xy[1], "d_lat": d_xy[0], "d_lon": d_xy[1]}
+    enr.update(extra)
+    return enr
+
+
+class RoutePlausibleTests(unittest.TestCase):
+    def test_plane_on_corridor_is_plausible(self):
+        # NYC sits between Boston and Washington DC.
+        self.assertTrue(ff.route_is_plausible(40.71, -74.00, *BOS, *DCA))
+
+    def test_plane_off_corridor_is_rejected(self):
+        # NYC is nowhere near a Los Angeles -> San Francisco flight.
+        self.assertFalse(ff.route_is_plausible(40.71, -74.00, *LAX, *SFO))
+
+    def test_missing_coords_rejected(self):
+        self.assertFalse(ff.route_is_plausible(40.71, -74.00, None, None, 38.8, -77.0))
+
+
+class EnrichedFlightTests(unittest.TestCase):
+    def _flight(self, callsign="EDV4648", dist_km=12.87, baro=3048.0):
+        # 12.87 km ~= 8 mi; baro 3048 m = 10000 ft
+        return {"state": make_state(callsign=callsign, baro=baro),
+                "distance_km": dist_km}
+
+    def test_verified_route_is_shown(self):
+        enr = route("BOS", "DCA", BOS, DCA, airline="Endeavor Air", type="CRJ9")
         out = ff.format_enriched_flight(self._flight(), enr, units="imperial")
         self.assertEqual(out["line1"], "Endeavor")      # first word (name > 10)
-        self.assertEqual(out["line2"], "LEX>ATL")
+        self.assertEqual(out["line2"], "BOS>DCA")       # plane is on this route
         self.assertEqual(out["line3"], "CRJ9 8mi")
 
+    def test_bogus_route_hidden_shows_altitude(self):
+        # Route says LAX->SFO but the plane is over NYC -> hide route, show alt.
+        enr = route("LAX", "SFO", LAX, SFO, airline="United", type="A320")
+        out = ff.format_enriched_flight(self._flight(), enr, units="imperial")
+        self.assertEqual(out["line1"], "United")
+        self.assertEqual(out["line2"], "10000 ft")      # altitude, not the route
+        self.assertEqual(out["line3"], "A320 8mi")
+
     def test_short_airline_kept_whole(self):
-        enr = {"airline": "Delta", "origin": "STL", "dest": "JFK", "type": "A320"}
+        enr = route("BOS", "DCA", BOS, DCA, airline="Delta", type="A320")
         out = ff.format_enriched_flight(self._flight(), enr)
         self.assertEqual(out["line1"], "Delta")
 
-    def test_ga_fallback_owner_and_registration(self):
-        enr = {"airline": None, "origin": None, "dest": None,
-               "type": "C172", "registration": "N512WT", "owner": "Flying Club"}
-        out = ff.format_enriched_flight(self._flight("N512WT", dist_km=3.2), enr)
-        self.assertEqual(out["line1"], "Flying Clu")    # owner, truncated to 10
-        self.assertEqual(out["line2"], "N512WT")        # registration as route
+    def test_ga_no_route_no_altitude_uses_registration(self):
+        enr = {"airline": None, "type": "C172",
+               "registration": "N512WT", "owner": "SkyClub"}
+        flight = {"state": make_state(callsign="N512WT", baro=None, geo=None),
+                  "distance_km": 3.2}
+        out = ff.format_enriched_flight(flight, enr)
+        self.assertEqual(out["line1"], "SkyClub")       # owner
+        self.assertEqual(out["line2"], "N512WT")        # no route, no alt -> reg
         self.assertEqual(out["line3"], "C172 2mi")
 
-    def test_no_enrichment_at_all(self):
+    def test_no_enrichment_shows_callsign_and_altitude(self):
         out = ff.format_enriched_flight(self._flight("UAL9"), {}, units="imperial")
         self.assertEqual(out["line1"], "UAL9")          # callsign
-        self.assertEqual(out["line2"], "--")
-        self.assertEqual(out["line3"], "8mi")           # distance only
-
-    def test_missing_type_shows_distance_only(self):
-        enr = {"airline": "United", "origin": "ORD", "dest": "DEN", "type": None}
-        out = ff.format_enriched_flight(self._flight(), enr)
-        self.assertEqual(out["line3"], "8mi")
+        self.assertEqual(out["line2"], "10000 ft")      # altitude fallback
+        self.assertEqual(out["line3"], "8mi")           # distance only (no type)
 
     def test_metric_distance(self):
-        enr = {"airline": "KLM", "origin": "AMS", "dest": "LHR", "type": "B738"}
+        enr = route("BOS", "DCA", BOS, DCA, airline="KLM", type="B738")
         out = ff.format_enriched_flight(self._flight(dist_km=10.0), enr, units="metric")
         self.assertEqual(out["line3"], "B738 10km")
 
     def test_lines_fit_panel(self):
-        enr = {"airline": "Verylongairlinename Co", "origin": "ABCD",
-               "dest": "WXYZ", "type": "SUPERLONGTYPE"}
+        enr = route("ABCD", "WXYZ", BOS, DCA,
+                    airline="Verylongairlinename Co", type="SUPERLONGTYPE")
         out = ff.format_enriched_flight(self._flight(), enr)
         for key in ("line1", "line2", "line3"):
             self.assertLessEqual(len(out[key]), ff.MAX_LINE,
                                  "{} too long: {!r}".format(key, out[key]))
 
     def test_far_plane_is_white(self):
-        enr = {"airline": "Delta", "origin": "A", "dest": "B", "type": "A320"}
+        enr = route("BOS", "DCA", BOS, DCA, airline="Delta", type="A320")
         out = ff.format_enriched_flight(self._flight(dist_km=40.0), enr, close_km=4.8)
         self.assertEqual(out["color"], ff.COLOR_NORMAL)
 
     def test_super_close_plane_is_red(self):
-        enr = {"airline": "Delta", "origin": "A", "dest": "B", "type": "A320"}
+        enr = route("BOS", "DCA", BOS, DCA, airline="Delta", type="A320")
         out = ff.format_enriched_flight(self._flight(dist_km=2.0), enr, close_km=4.8)
         self.assertEqual(out["color"], ff.COLOR_CLOSE)
 

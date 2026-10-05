@@ -45,10 +45,12 @@ CDT           <- time-zone abbreviation
 - ✅ Personal **boot splash** (configurable, e.g. `NELA'S SKYWATCH`)
 - ✅ **Airline / route / aircraft-type** display via adsbdb enrichment
   (e.g. `Endeavor` / `LEX>ATL` / `CRJ9 8mi`), with graceful fallbacks
+- ✅ **Route verification** — only shows a route when the plane is really on that
+  corridor (adsbdb routes are often stale); otherwise shows altitude
 - ✅ **Neutral white** display, **red only when a plane is nearly overhead**
 - ✅ Configurable **brightness** (dim by default — HUB75 panels are glaring)
-- ✅ **50 desktop unit tests** pass (filtering, distance, units, color,
-  enrichment layout, clock + DST)
+- ✅ **53 desktop unit tests** pass (filtering, distance, units, color,
+  enrichment layout, route verification, clock + DST)
 - ⬜ Flash + run on real hardware (your step — see Setup)
 
 ---
@@ -191,8 +193,12 @@ The board auto-runs `code.py`. Open the serial console to watch the log.
 5. The **closest** survivor is looked up on **adsbdb** (airline + route by
    callsign, aircraft type by hex; cached) and shown as **airline / route /
    type+distance** in neutral **white**, turning **red** only when the plane is
-   within `CLOSE_RADIUS` (nearly overhead). If a plane has no route (e.g. small
-   private aircraft), it falls back to owner / registration / type.
+   within `CLOSE_RADIUS` (nearly overhead).
+6. **The route is verified before it's shown.** adsbdb routes are keyed by flight
+   number and are often stale/wrong, so the route is displayed only when the
+   plane is actually on the corridor between those two airports
+   (origin→plane→destination ≈ origin→destination). If it isn't — or there's no
+   route (e.g. a private plane) — the middle line shows the **altitude** instead.
 6. If nothing qualifies and `CLOCK_FALLBACK` is on, the panel shows a **St.
    Louis clock** (see below); otherwise `NO FLIGHTS`. If nearby planes were only
    dropped for staleness, you get `STALE DATA`; network/API problems show
