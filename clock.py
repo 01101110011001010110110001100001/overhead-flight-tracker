@@ -105,6 +105,12 @@ def format_central_clock(utc):
     }
 
 
+def utc_from_components(year, month, day, hour, minute, second):
+    """Build a UTC Unix timestamp from calendar components (e.g. from NTP)."""
+    return (_days_from_civil(year, month, day) * SECONDS_PER_DAY
+            + hour * 3600 + minute * 60 + second)
+
+
 def _local_days(utc):
     """Days-since-epoch for the St. Louis local date at this UTC instant."""
     offset = DAYLIGHT_OFFSET_HOURS if _is_us_dst(utc) else STANDARD_OFFSET_HOURS

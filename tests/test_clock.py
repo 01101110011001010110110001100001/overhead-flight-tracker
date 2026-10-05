@@ -58,6 +58,15 @@ class CentralTimeTests(unittest.TestCase):
         self.assertTrue(clock._is_us_dst(utc_of(2026, 11, 1, 6, 59)))   # 1:59 CDT
         self.assertFalse(clock._is_us_dst(utc_of(2026, 11, 1, 7, 1)))   # 1:01 CST
 
+    def test_utc_from_components_epoch(self):
+        self.assertEqual(clock.utc_from_components(1970, 1, 1, 0, 0, 0), 0)
+
+    def test_utc_from_components_roundtrip(self):
+        # Build a UTC timestamp from NTP-style components, then format it back.
+        u = clock.utc_from_components(2026, 7, 4, 18, 34, 7)
+        self.assertEqual(u, utc_of(2026, 7, 4, 18, 34) + 7)
+        self.assertEqual(clock.format_central_clock(u)["time"], "1:34 PM")  # CDT
+
     def test_nth_sunday_helper(self):
         self.assertEqual(clock._nth_sunday(2026, 3, 2), 8)
         self.assertEqual(clock._nth_sunday(2026, 11, 1), 1)

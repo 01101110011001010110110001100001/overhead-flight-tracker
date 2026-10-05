@@ -39,19 +39,19 @@ CDT           <- time-zone abbreviation
 - ✅ Distinct screens for **no-flights / stale / Wi-Fi / API / rate-limit**
 - ✅ **Wi-Fi & API recovery** with exponential backoff — no restart or request
   storms
-- ✅ **St. Louis clock fallback** (with day + date) when no aircraft are nearby
-- ✅ **Proximity color**: flights glow green→amber→red as they get closer
+- ✅ **St. Louis clock** (with day + date) when no aircraft are nearby, kept
+  accurate via **NTP** (a real time server)
 - ✅ **Climb/descent arrows** (`^`/`v`) next to altitude
 - ✅ Personal **boot splash** (configurable, e.g. `NELA'S SKYWATCH`)
 - ✅ **Airline / route / aircraft-type** display via adsbdb enrichment
   (e.g. `Endeavor` / `LEX>ATL` / `CRJ9 8mi`), with graceful fallbacks
-- ✅ **Accurate routes** from the same source as the OpenSky map (adsb.lol),
-  with current-leg selection for multi-leg flights and a corridor-verification
-  backstop; shows altitude when no trustworthy route is available
+- ✅ **Route verification** — a route is shown only when the plane is actually on
+  the corridor between those airports; otherwise the line shows altitude, so a
+  stale route is never displayed
 - ✅ **Neutral white** display, **red only when a plane is nearly overhead**
 - ✅ Configurable **brightness** (dim by default — HUB75 panels are glaring)
-- ✅ **61 desktop unit tests** pass (filtering, distance, units, color,
-  enrichment layout, route verification, leg selection, clock + DST)
+- ✅ **59 desktop unit tests** pass (filtering, distance, units, color,
+  enrichment layout, route verification, clock + DST + NTP conversion)
 - ⬜ Flash + run on real hardware (your step — see Setup)
 
 ---
@@ -79,8 +79,9 @@ CDT           <- time-zone abbreviation
 - Libraries from the matching **Adafruit CircuitPython Library Bundle** (10.x):
   - `adafruit_display_text`
   - `adafruit_requests` (which also needs `adafruit_connection_manager`)
+  - `adafruit_ntp` (accurate clock from a time server)
   - (`board`, `wifi`, `socketpool`, `ssl`, `displayio`, `rgbmatrix`,
-    `framebufferio`, `terminalio` are built into CircuitPython.)
+    `framebufferio`, `terminalio`, `gc` are built into CircuitPython.)
 
 Desktop tests need only a normal **Python 3** — no extra packages.
 
@@ -93,7 +94,7 @@ Desktop tests need only a normal **Python 3** — no extra packages.
 | `code.py` | board | Main app: settings, Wi-Fi, refresh loop, recovery |
 | `flight_display.py` | board | 64 × 32 panel setup + rendering |
 | `opensky.py` | board (network) | OAuth2 login, token renewal, `/states/all` |
-| `enrich.py` | board (network) | Route (adsb.lol) + airline/type (adsbdb), cached |
+| `enrich.py` | board (network) | Airline/route/type lookup via adsbdb, cached |
 | `flight_filter.py` | anywhere | Distance, filtering, unit + layout formatting (pure) |
 | `clock.py` | anywhere | UTC → St. Louis (US Central) time with DST (pure logic) |
 | `display_test.py` | board | Display-only demo, **no credentials needed** |
@@ -169,7 +170,8 @@ CIRCUITPY/
 └── lib/
     ├── adafruit_display_text/
     ├── adafruit_requests.mpy
-    └── adafruit_connection_manager.mpy
+    ├── adafruit_connection_manager.mpy
+    └── adafruit_ntp.mpy
 ```
 
 > Do **not** put `display_test.py`, `tests/`, `settings.toml.example`, or
@@ -195,29 +197,42 @@ The board auto-runs `code.py`. Open the serial console to watch the log.
    callsign, aircraft type by hex; cached) and shown as **airline / route /
    type+distance** in neutral **white**, turning **red** only when the plane is
    within `CLOSE_RADIUS` (nearly overhead).
-6. **Routes come from the same data the OpenSky map uses** (adsb.lol VRS standing
-   data), and for multi-leg flights the **current leg** is chosen by the plane's
-   position. As a backstop, a route is shown only when the plane is actually on
-   the corridor between those two airports (origin→plane→destination ≈
-   origin→destination). If it isn't — or there's no route (e.g. a private
-   plane) — the middle line shows the **altitude** instead.
-6. If nothing qualifies and `CLOCK_FALLBACK` is on, the panel shows a **St.
+6. **The route is verified before it's shown.** adsbdb routes are keyed by flight
+   number and are often stale, so a route is displayed only when the plane is
+   actually on the corridor between those two airports (origin→plane→destination
+   ≈ origin→destination). If it isn't — or there's no route (e.g. a private
+   plane) — the middle line shows the **altitude** instead. (See "Routes and the
+   certificate limitation" below for why we don't use the OpenSky map's source.)
+7. If nothing qualifies and `CLOCK_FALLBACK` is on, the panel shows a **St.
    Louis clock** (see below); otherwise `NO FLIGHTS`. If nearby planes were only
    dropped for staleness, you get `STALE DATA`; network/API problems show
    `NO SIGNAL` / `WIFI ERROR` / `API ERROR` / `RATE LIMIT`.
-7. Failures trigger **exponential backoff** (5 s → 300 s) so the board never
+8. Failures trigger **exponential backoff** (5 s → 300 s) so the board never
    restart-storms or hammers the API; a success resets the backoff. Rate-limit
    responses wait the server's `Retry-After`.
 
 ### Clock fallback
 
-When no aircraft are nearby, the display can show the current **St. Louis (US
-Central)** time instead of a blank "no flights" message. The time comes from the
-UTC timestamp OpenSky stamps on each API response — so **no battery-backed
-real-time clock is needed** — and it's extrapolated with the board's monotonic
-timer so it keeps ticking between refreshes. `clock.py` applies US daylight
-saving automatically (CST ↔ CDT) and shows the weekday + date. Turn it off with
-`CLOCK_FALLBACK = "false"`, or relabel it with `CLOCK_LABEL`.
+When no aircraft are nearby, the display shows the current **St. Louis (US
+Central)** time instead of a blank "no flights" message. The time is fetched from
+an **NTP time server** (`adafruit_ntp`, re-synced hourly) and extrapolated with
+the board's monotonic timer between syncs, so it's accurate to the second — **no
+battery-backed real-time clock needed**. If NTP is blocked on your network, it
+falls back to OpenSky's response timestamp (a few seconds less accurate).
+`clock.py` applies US daylight saving automatically (CST ↔ CDT) and shows the
+weekday + date. Turn it off with `CLOCK_FALLBACK = "false"`, or relabel it with
+`CLOCK_LABEL`.
+
+### Routes and the certificate limitation
+
+Routes come from **adsbdb**, whose server uses a Let's Encrypt certificate the
+board trusts. The data the OpenSky map itself uses (adsb.lol's VRS standing data)
+is more complete and leg-aware, but that host serves a **Google Trust Services**
+certificate, and CircuitPython's trimmed on-board CA bundle doesn't include that
+root — so the MatrixPortal can't verify it (and CircuitPython can't disable
+verification or add a second root). The practical effect: we show adsbdb's route
+**only when the plane is verifiably on that corridor**, and altitude otherwise.
+You'll see fewer routes than the website, but never a wrong one.
 
 ### Personal touches
 
@@ -264,11 +279,13 @@ Hardware has **not** been tested yet — verify on your board.
   (The original uses FlightAware and a 128 × 64 display; this project replaces
   FlightAware with OpenSky and targets a 64 × 32 panel.)
 - Live aircraft positions: **The OpenSky Network**, https://opensky-network.org/.
-- Routes: **adsb.lol VRS standing data** (https://www.adsb.lol/) — the same
-  dataset the OpenSky/tar1090 map uses, so routes match what you see there.
-- Airline names and aircraft types: **adsbdb**, https://www.adsbdb.com/ (free,
-  no key). Per adsbdb's terms, route data is the work of **David Taylor
+- Routes, airline names, and aircraft types: **adsbdb**, https://www.adsbdb.com/
+  (free, no key). Per adsbdb's terms, route data is the work of **David Taylor
   (Edinburgh)** and **Jim Mason (Glasgow)**; aircraft data is from **PlaneBase**.
+  (adsb.lol's VRS standing data would match the OpenSky map more closely, but its
+  host's certificate isn't verifiable on the board — see "Routes and the
+  certificate limitation".)
+- Time: public **NTP** pool via `adafruit_ntp`.
 - This project is released under the **MIT License** (see `LICENSE`,
   Copyright 2026 Nela) — your chosen license for your original contributions.
   Adafruit's adapted portions remain under their original MIT notice, preserved
@@ -293,11 +310,11 @@ Hardware has **not** been tested yet — verify on your board.
 - [x] Distinct messages for no-flights vs. stale vs. connection failures
 - [x] Wi-Fi/API recovery with exponential backoff (no restart/request storms)
 - [x] Reviewed the starter's loop/empty-handling/cleanup/display bugs
-- [x] St. Louis (US Central) clock fallback with daylight saving + date
+- [x] St. Louis (US Central) clock with daylight saving + date, accurate via NTP
 - [x] Personal zest: proximity color, climb/descent arrows, boot splash
 - [x] Secrets in git-ignored `settings.toml`; documented `settings.toml.example`
 - [x] MIT license confirmed for original contributions
-- [x] Desktop unit tests pass — 38/38 (`python -m unittest discover -s tests`)
+- [x] Desktop unit tests pass — 59/59 (`python -m unittest discover -s tests`)
 - [ ] **Flash CircuitPython 9.x + libraries onto the board** (you)
 - [ ] **Run the display test on real hardware** (you)
 - [ ] **Run the full tracker with real credentials** (you)

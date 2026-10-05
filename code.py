@@ -21,6 +21,7 @@ import time
 import socketpool
 import wifi
 import adafruit_requests
+import adafruit_ntp
 
 from flight_display import build_display, FlightDisplay
 import flight_filter as ff
@@ -120,6 +121,23 @@ def current_utc(time_ref):
     return int(time_ref["utc"] + (time.monotonic() - time_ref["mono"]))
 
 
+def sync_time_from_ntp(time_ref, ntp):
+    """Anchor the clock to accurate NTP time. Best-effort; keeps last good time
+    on failure (some networks block NTP, in which case we fall back to OpenSky's
+    timestamp). adafruit_ntp caches internally, so this only hits the network
+    about once an hour."""
+    if ntp is None:
+        return
+    try:
+        dt = ntp.datetime  # UTC struct_time (tz_offset=0)
+        time_ref["utc"] = clock.utc_from_components(
+            dt.tm_year, dt.tm_mon, dt.tm_mday, dt.tm_hour, dt.tm_min, dt.tm_sec)
+        time_ref["mono"] = time.monotonic()
+        time_ref["ntp_ok"] = True
+    except Exception as error:  # noqa: BLE001 -- NTP blocked/unreachable
+        print("NTP sync failed (will fall back to OpenSky time):", error)
+
+
 def render_clock(ui, utc):
     shown = clock.format_central_clock(utc)
     ui.show_clock(shown["time"], CLOCK_LABEL, clock.format_central_date(utc))
@@ -145,8 +163,9 @@ def sleep_with_clock(ui, seconds, clock_active, time_ref):
 # ----------------------------------------------------------------------------
 def refresh_once(client, enricher, ui, time_ref):
     report_time, states = client.get_states(BBOX)
-    if report_time is not None:
-        # Anchor our clock to OpenSky's UTC timestamp.
+    # Only use OpenSky's timestamp for the clock if NTP isn't available (NTP is
+    # accurate to the second; OpenSky's timestamp lags a few seconds).
+    if report_time is not None and not time_ref.get("ntp_ok"):
         time_ref["utc"] = report_time
         time_ref["mono"] = time.monotonic()
 
@@ -179,7 +198,10 @@ def refresh_once(client, enricher, ui, time_ref):
     # No eligible aircraft: show the clock if enabled and we know the time.
     utc = current_utc(time_ref)
     if CLOCK_FALLBACK and utc is not None:
-        print("No flights nearby; showing clock.")
+        shown = clock.format_central_clock(utc)
+        src = "NTP" if time_ref.get("ntp_ok") else "OpenSky"
+        print("No flights; clock {} {} (time src: {})".format(
+            shown["time"], shown["abbr"], src))
         render_clock(ui, utc)
         return True
 
@@ -212,9 +234,11 @@ def main():
     requests_session = adafruit_requests.Session(pool, context)
     client = OpenSkyClient(requests_session, CLIENT_ID, CLIENT_SECRET)
     enricher = AircraftEnricher(requests_session)
+    # Accurate time from an NTP server (UTC). .datetime caches for an hour.
+    ntp = adafruit_ntp.NTP(pool, tz_offset=0, cache_seconds=3600)
 
-    # Clock anchor: filled in from OpenSky's response timestamp on first success.
-    time_ref = {"utc": None, "mono": 0.0}
+    # Clock anchor: NTP when available, else OpenSky's response timestamp.
+    time_ref = {"utc": None, "mono": 0.0, "ntp_ok": False}
 
     backoff = BACKOFF_START
     while True:
@@ -226,6 +250,12 @@ def main():
                 print("Wi-Fi dropped; reconnecting.")
                 connect_wifi(ui)
 
+            sync_time_from_ntp(time_ref, ntp)  # keep the clock accurate
+            _utc = current_utc(time_ref)
+            if _utc is not None:
+                _c = clock.format_central_clock(_utc)
+                print("time {} {} (src: {})".format(
+                    _c["time"], _c["abbr"], "NTP" if time_ref.get("ntp_ok") else "OpenSky"))
             clock_active = refresh_once(client, enricher, ui, time_ref)
             backoff = BACKOFF_START  # success resets the backoff
 
