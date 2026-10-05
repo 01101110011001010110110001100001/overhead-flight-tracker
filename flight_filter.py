@@ -239,6 +239,13 @@ AIRCRAFT_NAMES = {
     # Common general aviation
     "C172": "C172", "C182": "C182", "C208": "C208", "PC12": "PC-12",
     "SR22": "SR22", "BE20": "King Air",
+    # Helicopters (news, medical, police, tour, offshore)
+    "EC30": "H130", "EC20": "H120", "EC35": "H135", "EC45": "H145",
+    "EC75": "H175", "AS50": "AS350", "AS55": "AS355", "EC25": "H225",
+    "R22": "R22", "R44": "R44", "R66": "R66",
+    "B06": "Bell 206", "B407": "Bell 407", "B412": "Bell 412", "B429": "Bell 429",
+    "S76": "S-76", "S92": "S-92", "H500": "MD 500",
+    "A109": "AW109", "A139": "AW139", "A169": "AW169",
 }
 
 
@@ -247,6 +254,54 @@ def aircraft_name(code):
     if not code:
         return None
     return AIRCRAFT_NAMES.get(code.upper(), code)
+
+
+# Callsign keywords that reveal what an aircraft is doing. Lots of special-use
+# aircraft broadcast a telephony callsign that says it outright: an air
+# ambulance really does transmit "MEDEVAC" or "LIFEGUARD", a news helicopter
+# "CHOPPER4", a police unit "POLICE1", and so on. We use these as a best-effort
+# guess for flights with no filed route (helicopters and little planes rarely
+# file one). First keyword found wins, so list the strongest signals first.
+# Labels stay <= MAX_LINE characters so they fit on one line.
+OPERATION_KEYWORDS = (
+    # Air medical / ambulance (LIFEGUARD is the FAA term for a medical-priority
+    # flight; ARCH is St. Louis's own air-ambulance service)
+    ("MEDEVAC", "Medical"), ("MEDIC", "Medical"), ("LIFE", "Medical"),
+    ("ARCH", "Medical"), ("MERCY", "Medical"), ("ANGEL", "Medical"),
+    ("SURVIVAL", "Medical"), ("AIRMED", "Medical"), ("AIRLIFT", "Medical"),
+    ("CAREFL", "Medical"), ("STARFL", "Medical"),
+    # Law enforcement
+    ("POLICE", "Police"), ("SHERIF", "Police"), ("TROOP", "Police"),
+    # News / media
+    ("CHOPPER", "News"), ("NEWS", "News"),
+    # Firefighting
+    ("FIRE", "Fire"), ("TANKER", "Fire"), ("HELITAK", "Fire"),
+    # Search & rescue / coast guard
+    ("RESCUE", "Rescue"), ("COASTGUARD", "Rescue"),
+    # Military (usually filtered out already, but just in case)
+    ("ARMY", "Military"), ("NAVY", "Military"), ("MARINE", "Military"),
+)
+
+# Aircraft types used almost entirely for flight instruction. This is only a
+# soft fallback when the callsign says nothing -- it's a guess about the type
+# of plane, not proof of what this particular flight is up to.
+TRAINER_TYPES = ("R22", "C150", "C152", "DV20", "DA20", "PA38", "P38T")
+
+
+def guess_operation(callsign, type_code=None):
+    """Best-effort guess of what an aircraft is doing, for routeless flights.
+
+    Looks for a telling keyword in the callsign first (reliable -- the aircraft
+    is literally announcing it), then falls back to a soft "Training" guess for
+    the little trainer types. Returns a short label (<= MAX_LINE chars) or None.
+    """
+    text = (callsign or "").upper()
+    for keyword, label in OPERATION_KEYWORDS:
+        if keyword in text:
+            return label
+    if type_code and type_code.upper() in TRAINER_TYPES:
+        return "Training"
+    return None
 
 
 def format_flight_lines(flight, route, units="imperial", close_km=DEFAULT_CLOSE_KM):
@@ -266,11 +321,15 @@ def format_flight_lines(flight, route, units="imperial", close_km=DEFAULT_CLOSE_
     route = route or {}
     distance_km = flight["distance_km"]
 
-    # Line 1 -- route (DEP>DEST) if FlightAware gave us both, else callsign.
+    # Line 1 -- route (DEP>DEST) if FlightAware gave us both. With no route
+    # (common for helicopters and small planes, which rarely file one), guess
+    # the mission from the callsign/type -- e.g. "Medical", "News", "Training"
+    # -- and fall back to the raw callsign when we can't tell.
     if route.get("origin") and route.get("dest"):
         line1 = _truncate("{}>{}".format(route["origin"], route["dest"]))
     else:
-        line1 = _truncate(callsign)
+        operation = guess_operation(callsign, route.get("type"))
+        line1 = _truncate(operation or callsign)
 
     # Line 2 -- aircraft model name if known, else altitude.
     type_name = aircraft_name(route.get("type"))

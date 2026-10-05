@@ -274,6 +274,65 @@ class AircraftNameTests(unittest.TestCase):
                                  "{} -> {!r} too long".format(code, name))
 
 
+class GuessOperationTests(unittest.TestCase):
+    def test_medical_callsigns(self):
+        self.assertEqual(ff.guess_operation("MEDEVAC1"), "Medical")
+        self.assertEqual(ff.guess_operation("LIFEGUARD"), "Medical")
+        self.assertEqual(ff.guess_operation("ARCH3"), "Medical")  # STL air ambulance
+
+    def test_other_missions(self):
+        self.assertEqual(ff.guess_operation("POLICE1"), "Police")
+        self.assertEqual(ff.guess_operation("CHOPPER4"), "News")
+        self.assertEqual(ff.guess_operation("FIREBIRD"), "Fire")
+        self.assertEqual(ff.guess_operation("RESCUE51"), "Rescue")
+        self.assertEqual(ff.guess_operation("ARMY123"), "Military")
+
+    def test_case_insensitive(self):
+        self.assertEqual(ff.guess_operation("medevac1"), "Medical")
+
+    def test_training_from_trainer_type(self):
+        # No mission keyword in the callsign, but the type is a pure trainer.
+        self.assertEqual(ff.guess_operation("N512DV", "DV20"), "Training")
+        self.assertEqual(ff.guess_operation("N22R", "R22"), "Training")
+
+    def test_callsign_beats_type(self):
+        # A medical callsign wins even if it's flying a trainer-ish type.
+        self.assertEqual(ff.guess_operation("MEDEVAC1", "DV20"), "Medical")
+
+    def test_no_signal_returns_none(self):
+        self.assertIsNone(ff.guess_operation("N123AB", "C172"))  # ordinary plane
+        self.assertIsNone(ff.guess_operation("AAL2487", "A319"))  # airline, no route
+        self.assertIsNone(ff.guess_operation("", None))
+
+    def test_labels_fit_panel(self):
+        for _, label in ff.OPERATION_KEYWORDS:
+            self.assertLessEqual(len(label), ff.MAX_LINE,
+                                 "{!r} too long".format(label))
+
+
+class RoutelessMissionLineTests(unittest.TestCase):
+    def _flight(self, callsign, dist_km=5.0, baro=300.0):
+        return {"state": make_state(callsign=callsign, baro=baro),
+                "distance_km": dist_km}
+
+    def test_medical_heli_shows_mission(self):
+        route = {"origin": None, "dest": None, "type": "EC35"}
+        out = ff.format_flight_lines(self._flight("ARCH3"), route)
+        self.assertEqual(out["line1"], "Medical")   # from the callsign
+        self.assertEqual(out["line2"], "H135")       # friendly type still shows
+
+    def test_trainer_shows_training(self):
+        route = {"origin": None, "dest": None, "type": "DV20"}
+        out = ff.format_flight_lines(self._flight("N512DV"), route)
+        self.assertEqual(out["line1"], "Training")
+        self.assertEqual(out["line2"], "DV20")
+
+    def test_unknown_still_falls_back_to_callsign(self):
+        route = {"origin": None, "dest": None, "type": "C172"}
+        out = ff.format_flight_lines(self._flight("N123AB"), route)
+        self.assertEqual(out["line1"], "N123AB")
+
+
 class ScaleColorTests(unittest.TestCase):
     def test_full_is_unchanged(self):
         self.assertEqual(ff.scale_color(0x00CC33, 1.0), 0x00CC33)

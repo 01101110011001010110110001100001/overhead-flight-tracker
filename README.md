@@ -21,9 +21,19 @@ A319         aircraft type               (FlightAware)
 A few nice touches:
 
 - The aircraft type is shown as a friendly model name where we know it
-  (`BCS1` becomes `A220-100`, `B738` becomes `737-800`, and so on). Anything not
-  in the list just shows its short code. The list lives in `flight_filter.py`
-  (`AIRCRAFT_NAMES`) if you want to add more.
+  (`BCS1` becomes `A220-100`, `B738` becomes `737-800`, `EC35` becomes `H135`,
+  and so on -- planes and helicopters both). Anything not in the list just shows
+  its short code. The list lives in `flight_filter.py` (`AIRCRAFT_NAMES`) if you
+  want to add more.
+- Lots of planes near a house are small ones with no filed route (trainers,
+  helicopters, sightseeing hops), so there's no "from > to" to show. When that
+  happens we take a guess at what the aircraft is doing and show that instead:
+  "Medical", "Police", "News", "Fire", "Rescue", or "Training". The reliable
+  ones come straight from the callsign -- an air ambulance literally broadcasts
+  `MEDEVAC` or `LIFEGUARD`, a news helicopter `CHOPPER`, and so on. "Training" is
+  a softer guess based on the aircraft being a known trainer type (a DV20, R22,
+  C152, etc.). If we can't tell, it just shows the callsign. The keyword and
+  trainer lists are `OPERATION_KEYWORDS` and `TRAINER_TYPES` in `flight_filter.py`.
 - If FlightAware doesn't know a flight (or you've hit your budget), it just
   shows the callsign and altitude instead. OpenSky tracking never stops.
 - Text is white, and turns red only when a plane is nearly overhead.
