@@ -44,6 +44,10 @@ HOME_LON = "-74.0060"
 # relevant. QUOTED because it is a decimal.
 SEARCH_RADIUS = "8"
 
+# A plane within this distance is drawn in RED (it's nearly overhead); farther
+# planes are plain white. Same units as SEARCH_RADIUS. QUOTED (decimal).
+CLOSE_RADIUS = "3"
+
 # --- Units ---------------------------------------------------------------
 # "imperial" -> miles + feet  (typical for US)
 # "metric"   -> kilometers + meters

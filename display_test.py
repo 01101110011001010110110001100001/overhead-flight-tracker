@@ -86,7 +86,9 @@ def main():
         # 1) Show enriched flights: airline / route / type+distance.
         #    Color warms as the plane gets closer.
         for flight, enrichment in demos:
-            shown = ff.format_enriched_flight(flight, enrichment, units="imperial")
+            # close_km ~4.8 km (3 mi): the ~2 mi demo plane shows RED, rest white.
+            shown = ff.format_enriched_flight(flight, enrichment,
+                                              units="imperial", close_km=4.8)
             print("Flight: {} | {} | {} color={:#08x}".format(
                 shown["line1"], shown["line2"], shown["line3"], shown["color"]))
             ui.show_flight(shown["line1"], shown["line2"], shown["line3"],

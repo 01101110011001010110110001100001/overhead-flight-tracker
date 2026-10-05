@@ -57,6 +57,7 @@ HOME_LAT = getenv_float("HOME_LAT", 0.0)
 HOME_LON = getenv_float("HOME_LON", 0.0)
 UNITS = getenv_str("UNITS", "imperial")
 SEARCH_RADIUS = getenv_float("SEARCH_RADIUS", 8.0)  # in UNITS
+CLOSE_RADIUS = getenv_float("CLOSE_RADIUS", 3.0)    # in UNITS: red if within this
 BRIGHTNESS = getenv_float("BRIGHTNESS", 0.3)        # 0.0 (off) .. 1.0 (full)
 REFRESH_SECONDS = getenv_int("REFRESH_SECONDS", 30)
 STALE_SECONDS = getenv_int("STALE_SECONDS", 60)
@@ -74,8 +75,10 @@ SPLASH_SECONDS = 2
 # Convert the user's radius (miles or km) into km for the math.
 if UNITS == "metric":
     RADIUS_KM = SEARCH_RADIUS
+    CLOSE_KM = CLOSE_RADIUS
 else:
     RADIUS_KM = SEARCH_RADIUS * ff.KM_PER_MILE
+    CLOSE_KM = CLOSE_RADIUS * ff.KM_PER_MILE
 
 # Precompute the API bounding box once (home doesn't move).
 BBOX = ff.bbox_around(HOME_LAT, HOME_LON, RADIUS_KM)
@@ -158,7 +161,8 @@ def refresh_once(client, enricher, ui, time_ref):
         icao24 = ff._get(state, ff.ICAO24)
         # Look up airline/route/type (best-effort; never raises).
         enrichment = enricher.enrich(callsign, icao24)
-        shown = ff.format_enriched_flight(flight, enrichment, units=UNITS)
+        shown = ff.format_enriched_flight(flight, enrichment, units=UNITS,
+                                          close_km=CLOSE_KM)
         print("Closest:", shown["line1"], "|", shown["line2"], "|", shown["line3"])
         ui.show_flight(shown["line1"], shown["line2"], shown["line3"],
                        color=shown["color"])

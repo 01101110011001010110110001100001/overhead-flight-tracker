@@ -31,12 +31,12 @@ MILES_PER_KM = 0.621371
 KM_PER_MILE = 1.609344
 EARTH_RADIUS_KM = 6371.0
 
-# --- Proximity color gradient (0xRRGGBB) ---------------------------------
-# A plane glows green when it's far out, warms through amber, and turns red as
-# it comes nearly overhead -- so you can read "how close" at a glance.
-PROX_FAR = 0x00CC33   # green  (at/near the radius edge)
-PROX_MID = 0xFFAA00   # amber  (about halfway in)
-PROX_NEAR = 0xFF2222  # red    (right on top of you)
+# --- Flight colors (0xRRGGBB) --------------------------------------------
+# Neutral by default: plain white. The only accent is red, shown only when a
+# plane is "super close" (within close_km) -- i.e. nearly overhead.
+COLOR_NORMAL = 0xFFFFFF   # white: the everyday color
+COLOR_CLOSE = 0xFF3333    # red: super close / nearly overhead
+DEFAULT_CLOSE_KM = 4.8    # ~3 miles
 
 # Vertical-rate threshold (m/s) below which we call the aircraft "level".
 LEVEL_RATE = 0.5
@@ -145,27 +145,9 @@ def scale_color(color, scale):
     return (r << 16) | (g << 8) | b
 
 
-def _blend(color_a, color_b, t):
-    """Linearly blend two 0xRRGGBB colors. t=0 -> a, t=1 -> b."""
-    t = min(1.0, max(0.0, t))
-    ar, ag, ab = (color_a >> 16) & 0xFF, (color_a >> 8) & 0xFF, color_a & 0xFF
-    br, bg, bb = (color_b >> 16) & 0xFF, (color_b >> 8) & 0xFF, color_b & 0xFF
-    r = int(round(ar + (br - ar) * t))
-    g = int(round(ag + (bg - ag) * t))
-    b = int(round(ab + (bb - ab) * t))
-    return (r << 16) | (g << 8) | b
-
-
-def proximity_color(distance_km, radius_km):
-    """Color for a flight based on how close it is: green (far) -> red (near)."""
-    if radius_km <= 0:
-        return PROX_NEAR
-    ratio = min(1.0, max(0.0, distance_km / radius_km))  # 1=far edge, 0=overhead
-    if ratio >= 0.5:
-        # Outer half: green -> amber as it crosses from the edge to halfway.
-        return _blend(PROX_FAR, PROX_MID, (1.0 - ratio) / 0.5)
-    # Inner half: amber -> red as it closes in.
-    return _blend(PROX_MID, PROX_NEAR, (0.5 - ratio) / 0.5)
+def flight_color(distance_km, close_km=DEFAULT_CLOSE_KM):
+    """Neutral white, except red when the plane is within `close_km` (overhead)."""
+    return COLOR_CLOSE if distance_km <= close_km else COLOR_NORMAL
 
 
 def _climb_arrow(state):
@@ -180,12 +162,12 @@ def _climb_arrow(state):
     return ""
 
 
-def format_flight(flight, units="imperial"):
+def format_flight(flight, units="imperial", close_km=DEFAULT_CLOSE_KM):
     """Turn a selected flight into short display strings + a color.
 
     Handles missing callsigns and missing altitude gracefully. Returns a dict:
       callsign, altitude (with a climb/descent arrow), distance, and color
-      (0xRRGGBB chosen by proximity).
+      (white, or red when within close_km).
     """
     state = flight["state"]
 
@@ -200,9 +182,6 @@ def format_flight(flight, units="imperial"):
         altitude_m = _get(state, GEO_ALTITUDE)
 
     distance_km = flight["distance_km"]
-    # radius_km is present on dicts from select_closest; fall back to the
-    # distance (ratio 1.0 -> far/green) if a caller built the dict by hand.
-    radius_km = flight.get("radius_km", distance_km)
     arrow = _climb_arrow(state)
 
     if units == "metric":
@@ -223,7 +202,7 @@ def format_flight(flight, units="imperial"):
         "callsign": callsign,
         "altitude": altitude,
         "distance": distance,
-        "color": proximity_color(distance_km, radius_km),
+        "color": flight_color(distance_km, close_km),
     }
 
 
@@ -249,13 +228,15 @@ def _compact_distance(distance_km, units):
     return "{:.0f}mi".format(distance_km * MILES_PER_KM)
 
 
-def format_enriched_flight(flight, enrichment, units="imperial"):
+def format_enriched_flight(flight, enrichment, units="imperial",
+                           close_km=DEFAULT_CLOSE_KM):
     """Build the 3 display lines from a flight + adsbdb enrichment.
 
     Layout: airline / route / type+distance. Degrades gracefully:
       * no airline  -> owner, else callsign
       * no route    -> registration, else '--'
       * no type     -> just the distance
+    Color is white, or red when within close_km (super close).
     Returns {line1, line2, line3, color}.
     """
     state = flight["state"]
@@ -280,7 +261,6 @@ def format_enriched_flight(flight, enrichment, units="imperial"):
 
     # Line 3 -- aircraft type + compact distance (distance right-aligned-ish).
     distance_km = flight["distance_km"]
-    radius_km = flight.get("radius_km", distance_km)
     dist = _compact_distance(distance_km, units)
     if enr.get("type"):
         room = max(1, MAX_LINE - len(dist) - 1)  # leave a space before distance
@@ -292,5 +272,5 @@ def format_enriched_flight(flight, enrichment, units="imperial"):
         "line1": line1,
         "line2": line2,
         "line3": line3,
-        "color": proximity_color(distance_km, radius_km),
+        "color": flight_color(distance_km, close_km),
     }

@@ -136,24 +136,18 @@ class FormatFlightTests(unittest.TestCase):
         self.assertEqual(out["altitude"], "ALT --")
 
 
-class ProximityColorTests(unittest.TestCase):
-    def test_far_is_green(self):
-        self.assertEqual(ff.proximity_color(10.0, 10.0), ff.PROX_FAR)
+class FlightColorTests(unittest.TestCase):
+    def test_far_is_white(self):
+        self.assertEqual(ff.flight_color(10.0, close_km=4.8), ff.COLOR_NORMAL)
 
-    def test_overhead_is_red(self):
-        self.assertEqual(ff.proximity_color(0.0, 10.0), ff.PROX_NEAR)
+    def test_super_close_is_red(self):
+        self.assertEqual(ff.flight_color(2.0, close_km=4.8), ff.COLOR_CLOSE)
 
-    def test_halfway_is_amber(self):
-        self.assertEqual(ff.proximity_color(5.0, 10.0), ff.PROX_MID)
+    def test_exactly_at_threshold_is_red(self):
+        self.assertEqual(ff.flight_color(4.8, close_km=4.8), ff.COLOR_CLOSE)
 
-    def test_monotonic_warming(self):
-        # Red channel should not decrease as the plane gets closer.
-        colors = [ff.proximity_color(d, 10.0) for d in (10, 7.5, 5, 2.5, 0)]
-        reds = [(c >> 16) & 0xFF for c in colors]
-        self.assertEqual(reds, sorted(reds))
-
-    def test_zero_radius_safe(self):
-        self.assertEqual(ff.proximity_color(1.0, 0.0), ff.PROX_NEAR)
+    def test_just_beyond_threshold_is_white(self):
+        self.assertEqual(ff.flight_color(4.81, close_km=4.8), ff.COLOR_NORMAL)
 
 
 class ClimbArrowTests(unittest.TestCase):
@@ -179,17 +173,17 @@ class ClimbArrowTests(unittest.TestCase):
 
     def test_format_includes_color(self):
         s = make_state(baro=3048.0)
-        out = ff.format_flight({"state": s, "distance_km": 10.0, "radius_km": 10.0})
-        self.assertEqual(out["color"], ff.PROX_FAR)
+        out = ff.format_flight({"state": s, "distance_km": 10.0}, close_km=4.8)
+        self.assertEqual(out["color"], ff.COLOR_NORMAL)
 
 
 class SelectColorIntegrationTests(unittest.TestCase):
-    def test_selection_carries_radius_for_color(self):
-        s = make_state(lat=40.7128, lon=-74.0060)  # distance ~0 -> red
+    def test_overhead_plane_is_red(self):
+        s = make_state(lat=40.7128, lon=-74.0060)  # distance ~0 -> super close
         result = ff.select_closest([s], HOME_LAT, HOME_LON, radius_km=10,
                                    now=1000, max_age_s=60)
-        out = ff.format_flight(result["flight"])
-        self.assertEqual(out["color"], ff.PROX_NEAR)
+        out = ff.format_flight(result["flight"], close_km=4.8)
+        self.assertEqual(out["color"], ff.COLOR_CLOSE)
 
 
 class EnrichedFlightTests(unittest.TestCase):
@@ -243,10 +237,15 @@ class EnrichedFlightTests(unittest.TestCase):
             self.assertLessEqual(len(out[key]), ff.MAX_LINE,
                                  "{} too long: {!r}".format(key, out[key]))
 
-    def test_color_by_proximity(self):
+    def test_far_plane_is_white(self):
         enr = {"airline": "Delta", "origin": "A", "dest": "B", "type": "A320"}
-        out = ff.format_enriched_flight(self._flight(dist_km=40.0, radius=40.0), enr)
-        self.assertEqual(out["color"], ff.PROX_FAR)
+        out = ff.format_enriched_flight(self._flight(dist_km=40.0), enr, close_km=4.8)
+        self.assertEqual(out["color"], ff.COLOR_NORMAL)
+
+    def test_super_close_plane_is_red(self):
+        enr = {"airline": "Delta", "origin": "A", "dest": "B", "type": "A320"}
+        out = ff.format_enriched_flight(self._flight(dist_km=2.0), enr, close_km=4.8)
+        self.assertEqual(out["color"], ff.COLOR_CLOSE)
 
 
 class ScaleColorTests(unittest.TestCase):

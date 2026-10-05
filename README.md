@@ -45,6 +45,7 @@ CDT           <- time-zone abbreviation
 - ✅ Personal **boot splash** (configurable, e.g. `NELA'S SKYWATCH`)
 - ✅ **Airline / route / aircraft-type** display via adsbdb enrichment
   (e.g. `Endeavor` / `LEX>ATL` / `CRJ9 8mi`), with graceful fallbacks
+- ✅ **Neutral white** display, **red only when a plane is nearly overhead**
 - ✅ Configurable **brightness** (dim by default — HUB75 panels are glaring)
 - ✅ **50 desktop unit tests** pass (filtering, distance, units, color,
   enrichment layout, clock + DST)
@@ -189,9 +190,9 @@ The board auto-runs `code.py`. Open the serial console to watch the log.
    OpenSky's own response timestamp so the board needs no accurate clock).
 5. The **closest** survivor is looked up on **adsbdb** (airline + route by
    callsign, aircraft type by hex; cached) and shown as **airline / route /
-   type+distance**, colored by proximity (green far → amber → red overhead).
-   If a plane has no route (e.g. small private aircraft), it falls back to
-   owner / registration / type.
+   type+distance** in neutral **white**, turning **red** only when the plane is
+   within `CLOSE_RADIUS` (nearly overhead). If a plane has no route (e.g. small
+   private aircraft), it falls back to owner / registration / type.
 6. If nothing qualifies and `CLOCK_FALLBACK` is on, the panel shows a **St.
    Louis clock** (see below); otherwise `NO FLIGHTS`. If nearby planes were only
    dropped for staleness, you get `STALE DATA`; network/API problems show
@@ -212,8 +213,8 @@ saving automatically (CST ↔ CDT) and shows the weekday + date. Turn it off wit
 
 ### Personal touches
 
-- **Proximity color** — a shown flight is tinted by how close it is: green near
-  the radius edge, warming through amber, to red when it's nearly overhead.
+- **Neutral colors** — the display is plain **white**, turning **red** only when
+  a plane is within `CLOSE_RADIUS` (nearly overhead). Errors use a muted amber.
 - **Climb/descent** — a trailing `^` (climbing) or `v` (descending) next to the
   altitude, from the aircraft's vertical rate. (ASCII, so it renders on any
   built-in font.)

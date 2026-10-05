@@ -18,7 +18,7 @@ import rgbmatrix
 import terminalio
 from adafruit_display_text.label import Label
 
-from flight_filter import scale_color
+from flight_filter import scale_color, COLOR_NORMAL
 
 # --- Panel geometry ------------------------------------------------------
 # One 64x32 HUB75 panel.
@@ -30,10 +30,14 @@ DISPLAY_HEIGHT = 32
 BIT_DEPTH = 4
 
 # --- Colors (0xRRGGBB) ---------------------------------------------------
-COLOR_FLIGHT = 0x00CC33   # green  -> a plane is shown
-COLOR_INFO = 0xFFAA00     # amber  -> normal status (searching / no flights)
-COLOR_ERROR = 0xFF2222    # red    -> something is wrong (Wi-Fi / API)
-COLOR_CLOCK = 0x1188FF    # blue   -> clock fallback (no flights nearby)
+# Neutral palette: almost everything is plain white. Red is reserved for a
+# super-close plane (set per-flight via the color passed to show_flight).
+# The one other accent is a muted amber for genuine errors, so a problem still
+# stands out. Everything is further dimmed by `brightness`.
+COLOR_FLIGHT = COLOR_NORMAL  # white -> a plane is shown (red when super close)
+COLOR_INFO = COLOR_NORMAL    # white -> normal status (searching / no flights)
+COLOR_CLOCK = COLOR_NORMAL   # white -> clock fallback
+COLOR_ERROR = 0xFFAA00       # amber -> something is wrong (Wi-Fi / API)
 
 # terminalio.FONT glyphs are 6 pixels wide; used to center lines.
 GLYPH_WIDTH = 6
