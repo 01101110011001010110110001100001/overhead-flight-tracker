@@ -280,20 +280,3 @@ applied automatically (CST ↔ CDT). Turn the clock off with
 - Released under the **MIT License** (see `LICENSE`, Copyright 2026 Nela).
   Adafruit's adapted portions keep their original MIT notice in
   `flight_display.py`.
-
----
-
-## Progress checklist
-
-- [x] Single 64 × 32 MatrixPortal S3 display (1/16 scan, 4 address pins)
-- [x] OpenSky positions + distance; closest airborne aircraft, stale/ground filtered
-- [x] FlightAware `/flights/{ident}` (max_pages=1), matched to the airborne flight
-- [x] Route + aircraft type cached per aircraft (no extra calls on redraw/updates)
-- [x] Graceful handling of missing callsigns, unknown routes, and API errors
-- [x] Monthly budget with NVM persistence; stops before the allowance with a margin
-- [x] OpenSky keeps tracking when the FlightAware budget is exhausted
-- [x] 24-hour St. Louis clock, accurate via NTP, with date
-- [x] Private `settings.toml` (git-ignored); example has only placeholders
-- [x] Desktop unit tests pass (`python -m unittest discover -s tests`)
-- [ ] **Paste your FlightAware key into settings.toml** (you)
-- [ ] **Deploy to CIRCUITPY and run the live test** (you)
