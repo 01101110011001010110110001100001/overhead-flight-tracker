@@ -103,6 +103,16 @@ def utc_from_components(year, month, day, hour, minute, second):
             + hour * 3600 + minute * 60 + second)
 
 
+def in_window(hour, start, end):
+    """Is `hour` (0-23) inside the [start, end) window? Handles windows that
+    cross midnight (e.g. 22->6). start == end means "empty / off"."""
+    if start == end:
+        return False
+    if start < end:
+        return start <= hour < end
+    return hour >= start or hour < end  # wraps past midnight
+
+
 def utc_month_id(utc):
     """A unique integer id for the UTC calendar month (year*12 + month).
 

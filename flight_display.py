@@ -137,3 +137,7 @@ class FlightDisplay:
     def show_splash(self, line1, line2=""):
         """Centered boot splash (e.g. a personal name)."""
         self._set(line1, line2, "", COLOR_FLIGHT)
+
+    def show_blank(self):
+        """Turn the panel dark (used during the nightly sleep)."""
+        self._set("", "", "", COLOR_NORMAL)

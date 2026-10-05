@@ -89,6 +89,14 @@ REFRESH_SECONDS = 30
 # seconds compared to OpenSky's own report timestamp. Integer, so no quotes.
 STALE_SECONDS = 60
 
+# --- Nightly sleep -------------------------------------------------------
+# Turn the screen off and pause the APIs during quiet hours (local time), so it
+# isn't running while you're asleep. These are whole hours, 0-23. The example
+# below sleeps from midnight (0) to 8 AM. To disable sleep, set both to the same
+# number. Integers, so no quotes.
+SLEEP_START_HOUR = 0
+SLEEP_END_HOUR = 8
+
 # --- Clock fallback ------------------------------------------------------
 # When no aircraft are nearby, show a digital clock instead of a plain
 # "NO FLIGHTS" message. The time comes from OpenSky's response timestamp

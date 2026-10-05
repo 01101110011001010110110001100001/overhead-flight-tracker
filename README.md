@@ -217,6 +217,22 @@ seconds on its own in between, so it stays accurate without a battery clock.
 Daylight saving is handled for you. You can turn it off with
 `CLOCK_FALLBACK = "false"` or rename it with `CLOCK_LABEL`.
 
+## Nightly sleep
+
+No point lighting up the room (or spending API calls) while you're asleep. Set
+the quiet hours in your settings and the board turns the screen off and pauses
+both APIs during that window, then wakes up on its own:
+
+```
+SLEEP_START_HOUR = 0    # midnight
+SLEEP_END_HOUR   = 8    # 8 AM
+```
+
+Hours are 0-23 in local time, and the window can cross midnight (e.g. 22 to 6).
+To turn sleep off entirely, set both to the same number. While asleep the board
+isn't drawing anything or calling OpenSky/FlightAware, so it also saves your
+daily OpenSky quota and FlightAware budget.
+
 ---
 
 ## Testing

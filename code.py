@@ -68,6 +68,11 @@ BRIGHTNESS = getenv_float("BRIGHTNESS", 0.3)        # 0.0 (off) .. 1.0 (full)
 REFRESH_SECONDS = getenv_int("REFRESH_SECONDS", 30)
 STALE_SECONDS = getenv_int("STALE_SECONDS", 60)
 
+# Nightly sleep: between these local hours (0-23) the screen goes dark and we
+# stop calling the APIs. Set both to the same number to turn it off.
+SLEEP_START_HOUR = getenv_int("SLEEP_START_HOUR", 0)
+SLEEP_END_HOUR = getenv_int("SLEEP_END_HOUR", 0)
+
 # When no aircraft are nearby, optionally show a St. Louis (US Central) clock
 # instead of a plain "NO FLIGHTS" message.
 CLOCK_FALLBACK = getenv_str("CLOCK_FALLBACK", "true").lower() == "true"
@@ -145,6 +150,7 @@ def current_utc(time_ref):
 
 NTP_RESYNC_SECONDS = 3600  # re-sync the clock from NTP at most once an hour
 SPEND_LOG_SECONDS = 3600   # log the FlightAware spend estimate at most hourly
+SLEEP_POLL_SECONDS = 60    # while asleep, check this often whether to wake up
 
 
 def sync_time_from_ntp(time_ref, ntp):
@@ -304,12 +310,31 @@ def main():
     time_ref = {"utc": None, "mono": 0.0, "ntp_ok": False}
 
     last_spend_log = None  # monotonic time of the last hourly spend report
+    asleep = False         # True while we're in the nightly quiet hours
 
     backoff = BACKOFF_START
     while True:
         wait = REFRESH_SECONDS
         view = {"kind": "static"}
         try:
+            # Nightly sleep: during quiet hours, blank the screen and skip all
+            # network/API work. We use the time we already know (no network
+            # needed), so nothing lights up or gets queried until we wake.
+            now_utc = current_utc(time_ref)
+            if now_utc is not None and clock.in_window(
+                    clock.central_time(now_utc)["hour"],
+                    SLEEP_START_HOUR, SLEEP_END_HOUR):
+                if not asleep:
+                    print("Quiet hours ({:02d}:00-{:02d}:00): screen off, APIs "
+                          "paused.".format(SLEEP_START_HOUR, SLEEP_END_HOUR))
+                    ui.show_blank()
+                    asleep = True
+                time.sleep(SLEEP_POLL_SECONDS)
+                continue
+            if asleep:
+                print("Waking up.")
+                asleep = False
+
             # If Wi-Fi dropped, reconnect before trying the API.
             if not wifi.radio.connected:
                 print("Wi-Fi dropped; reconnecting.")

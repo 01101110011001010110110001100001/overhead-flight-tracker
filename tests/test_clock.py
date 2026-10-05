@@ -71,6 +71,28 @@ class CentralTimeTests(unittest.TestCase):
         self.assertEqual(clock._nth_sunday(2026, 3, 2), 8)
         self.assertEqual(clock._nth_sunday(2026, 11, 1), 1)
 
+    def test_in_window_normal(self):
+        # Sleep midnight..8am.
+        self.assertTrue(clock.in_window(0, 0, 8))
+        self.assertTrue(clock.in_window(3, 0, 8))
+        self.assertTrue(clock.in_window(7, 0, 8))
+        self.assertFalse(clock.in_window(8, 0, 8))   # end is exclusive
+        self.assertFalse(clock.in_window(12, 0, 8))
+        self.assertFalse(clock.in_window(23, 0, 8))
+
+    def test_in_window_wraps_midnight(self):
+        # Sleep 10pm..6am.
+        self.assertTrue(clock.in_window(22, 22, 6))
+        self.assertTrue(clock.in_window(23, 22, 6))
+        self.assertTrue(clock.in_window(0, 22, 6))
+        self.assertTrue(clock.in_window(5, 22, 6))
+        self.assertFalse(clock.in_window(6, 22, 6))
+        self.assertFalse(clock.in_window(12, 22, 6))
+
+    def test_in_window_disabled_when_equal(self):
+        for h in range(24):
+            self.assertFalse(clock.in_window(h, 0, 0))
+
     def test_date_format(self):
         # 2026-07-04 12:00 UTC -> morning Central, Saturday.
         out = clock.format_central_date(utc_of(2026, 7, 4, 12, 0))
